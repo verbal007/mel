@@ -1,0 +1,52 @@
+// jer_makeText
+// created by Jeremy Sabo on Sep 29, 2005
+
+// source jer_makeText; jer_makeText "Testing... 1 2 3" "Arial" "NewText"
+
+global proc jer_makeText(string $text, string $font, string $name){
+
+	// font types: Times-Roman, Arial
+	float $prevPiv[]; // previous rotate pivot WS location
+	float $cenPiv[]; // rotate pivot WS loc after centering
+	float $diffPiv[]; // distance pivot moved after centering
+	
+	if (`objExists $name`)
+		error ("Duplicate name "+$name+" found.  Please choose another name\n");
+	
+	string $textGrp[] = `textCurves -f $font -t $text`;
+	makeIdentity -apply true -t 1 -r 1 -s 1 -n 0 $textGrp[0];
+	string $textChildren[] = `listRelatives -ad -c $textGrp[0]`;
+	string $shapes[];
+	string $each;
+	int $num;
+	
+	for ($each in $textChildren){
+		if ((`nodeType $each`)== "nurbsCurve"){
+			$shapes[`size($shapes)`]=$each;
+		}
+	}
+	
+	print $shapes;
+	group -em -n $name;
+	parent -s -r $shapes $name;
+	
+	for ($num = 0;$num < `size($shapes)`;$num++){
+		$each = $shapes[$num];
+		rename $each (`substitute "curve" $each $name`);
+	}
+	
+	delete $textGrp[0];
+	
+	$prevPiv = `xform -q -ws -rp $name`;
+	xform -centerPivots $name;
+	$cenPiv = `xform -q -ws -rp $name`;
+	$diffPiv[0] = $prevPiv[0] - $cenPiv[0];
+	$diffPiv[1] = $prevPiv[1] - $cenPiv[1];
+	$diffPiv[2] = $prevPiv[2] - $cenPiv[2];
+	move -r $diffPiv[0] $diffPiv[1] $diffPiv[2] $name;
+	makeIdentity -apply true -t 1 -r 1 -s 1 -n 0 $name;
+	select $name;
+	delete -ch;
+	
+	
+} // END - global proc jer_makeText(string $text, string $font, string $name){

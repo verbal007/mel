@@ -1,0 +1,273 @@
+/*//////////////////////////////////////////////////////////////////////////////
+//	jer_saveAnimInc
+Created by: Jeremy Sabo on June 22, 2005
+Desc: Checks directory of file that is currently being worked on.
+		Lists files in directory, Prompts user for comment and confirms
+		publishing new asset, then increments and saves as new filename.
+         
+       "file -q -l"  Lists all files in scene, including references.
+
+File naming scene_sequence_type_version
+i.e.  004_001A_Ani_v001.ma
+
+*///////////////////////////////////////////////////////////////////////////////
+
+//////////////////////////////////////////////////////////////////////////////
+// SEND EMAIL
+global proc jer_saveAnim_Mail(string $logfile, string $userName, string $assetFile, string $fileType){
+	// mailto.exe -S New Character-U jeremy -D jeremy@systemshutdown.com -D jeremy@bardel.ca -H mail.bardel.ca -MF C:\test.txt
+		
+		string $dirName;
+		string $subject;
+		string $sender;
+		string $dest;
+		string $server;
+		string $mailFile;
+		string $command;
+		string $command;
+		
+		print $fileType;
+		
+		$dirName = ` dirname( $assetFile ) `;
+		$subject = (" -S \"Animation Update: "+$assetFile+" has been updated.\"");
+		$sender = (" -U "+$userName);
+		$dest = " -D jeremy@bardel.ca -D griff@bardel.ca";
+
+	string $server = " -H \"mail.bardel.ca\"";
+	string $mailFile = " -MF "+$logfile;
+	string $command = ("W:/Rig/scripts/rig/jer/MAILTO.EXE"+$subject+$sender+$dest+$server+$mailFile);
+	string $command = `jer_replaceAll "/" $command "\\"`;
+	print ($command+"\n");
+		
+	string $success = `system($command)`;
+	print ($success+"\n");
+}
+
+//////////////////////////////////////////////////
+// PUBLISH
+
+global proc jer_saveAnim_Publish(string $filePieces[], string $assetFolder, string $dirName, string $newVersion, string $userName, string $newComment, string $fileType ){
+	
+	string $publish;
+	
+	string $details;
+	int $intVersion;
+	string $stringVersion;
+	int $padding = 3;
+	int $increment = 1;
+	
+	string $backupFile;
+	string $rawData;
+	string $cleanData[];
+	
+	string $nickName;
+	string $cleanedName;
+	string $currTime;
+	string $currDate;
+	
+	string $assetFile;
+	string $workFile;
+	string $backupFile;
+	string $publishedWorkFile;
+	
+	string $logfile;
+	int $fileID;
+	
+	
+	string $publish	= `promptDialog
+						-title "Publish Asset"
+						-message "Publish file to root asset folder?"
+						-text "<Enter detailed description.>"
+						-scrollableField 1
+						-button "Publish"
+						-button "Cancel"
+						-defaultButton "Publish"
+						-cancelButton "Do Not Publish"
+						-dismissString "Do Not Publish"`;
+	
+	if ( $publish == "Publish"){
+		
+		// Cleaning username
+		$details = `promptDialog -query`;
+		
+		if ($details == "<Enter detailed description.>"){
+			catchQuiet (`error "File not published."`);
+			warning "PUBLISH CANCELLED - No comment entered.";
+		
+		} else {
+		
+			$intVersion = $newVersion;
+			$stringVersion = jer_incDigit($intVersion, $increment, $padding);
+		
+			/////////////////////////////////////////////////////////////////////
+			// Name components
+			$rawData = $userName;
+			tokenize $rawData $cleanData;
+			$nickName = `match "^..." $cleanData[0]`;
+			// Root asset file
+			$assetFile = ($assetFolder+"/"+$filePieces[0]+"_"+$filePieces[1]+$fileType);
+			// New name for work file
+			$workFile = ($dirName+"/"+$filePieces[0]+"_"+$filePieces[1]+"_"+$newVersion+"_"+$nickName+"_"+$newComment+$fileType);
+			// Old file backed up as...
+			$backupFile = ($assetFolder+"/old/"+$filePieces[0]+"_"+$filePieces[1]+"_pre"+$newVersion+$fileType);
+			// New work file name w/ "_GO" suffix to mark as published
+			$publishedWorkFile = ($dirName+"/"+$filePieces[0]+"_"+$filePieces[1]+"_"+$newVersion+"_"+$nickName+"_"+$newComment+"_GO"+$fileType);
+							
+			/////////////////////////////////////////////////////////////////////
+			// File Operations
+			// Creating backup of current asset
+			print ("Backing up to "
+			+$assetFolder+"/old/"+$filePieces[0]+"_"+$filePieces[1]+"pre"+$newVersion+$fileType+" \n");
+			
+			int $dirExists = `filetest -d ($assetFolder+"/old")`;
+			if ($dirExists == 0){
+				sysFile -makeDir ($assetFolder+"/old");
+				print ("Making directory"+$assetFolder+"/old\n");
+			};
+				
+			// Creating backup - sysFile is retarded.  Destination and THEN source.  Stupid.
+			sysFile -rename $backupFile $assetFile;
+			// Copying current work file as root asset file
+			sysFile -copy $assetFile $workFile;  // Updating asset			
+			sysFile -rename $publishedWorkFile $workFile; // Add "_GO" to end of filename
+			file -rn $publishedWorkFile;  // current file is renamed to match existing saved file
+			print ("PUBLISHED: "+$assetFolder+"/"+$filePieces[0]+"_"+$filePieces[1]+$fileType+"\n");
+						
+			/////////////////////////////////////////////////////////////////////
+			// Update Log File
+			$logfile = ($dirName+"/"+$filePieces[0]+"_LOG.txt");  // create logfile
+			$fileID = `fopen $logfile "a"`; // open logfile for writing
+			
+			$rawData = `system("time /t")`;
+			tokenize $rawData $cleanData;
+			$currTime = ($cleanData[0]+$cleanData[1]);
+			
+			$rawData = `system("date /t")`;
+			tokenize $rawData $cleanData;
+			$currDate = ($cleanData[0]+" "+$cleanData[1]);
+			
+			fprint $fileID ("File: "+$filePieces[0]+"_"+$filePieces[1]+"_"+$newVersion+"_"+$nickName+"_"+$newComment+$fileType
+								+"\nTime: "+$currTime+"\nDate: "+$currDate+"\nArtist: "+$userName+"Details: "+$details
+								+"\n--------------------------------------------\n"); // indicates SG set name is to follow
+			fclose $fileID;
+			
+			/////////////////////////////////////////////////////////////////////
+			// Mail Log File
+			$cleanedName = `match "^[^\r\n]*" $userName`;
+			
+			jer_saveAnim_Mail $logfile $cleanedName $assetFile $filePieces[1];
+		
+		}; // END -  if ($details == "Enter detailed description."){  } else {
+		
+	}else{
+		catchQuiet (`error "File not published."`);
+		warning "File not published.";
+	}
+} // END proc jer_saveAnim_Publish
+
+
+//////////////////////////////////////////////////////////////////////////////
+// jer_saveAnimInc
+//////////////////////////////////////////////////////////////////////////////
+global proc jer_saveAnimInc(){
+	print "*** Starting jer_saveAnimInc ***\n";
+	
+	// How many digits in the version number?
+	int $padding = 3;
+	// Number to increment version by (hopefully 1)
+	int $increment = 1;
+	
+	// Get current file name and path
+	string $filePath =` file -q -loc `;  // same results as "file -q -sn"
+	string $dirName = ` dirname( $filePath ) `;
+	string $currFile = ` match "[^/]*$" $filePath`;
+	
+	// list of files in current directory with same "Name_Asset"
+	string $charAsset[];
+	tokenize $currFile "_" $charAsset;
+	string $workingFiles[] = `getFileList -folder ($dirName+"/") -filespec ($charAsset[0]+"_"+$charAsset[1]+"*.m?")`;
+	
+	// folder that contains published files
+	string $assetFolder = `substitute "/[a-zA-ZR0-9]+$" $dirName ""`;
+	string $fileType;
+	
+	// Sort filenames from oldest to newest
+	string $sortedFiles[] = `sort $workingFiles`;
+	
+	// Grab name of latest file
+	string $latestFile = $sortedFiles[( `size($sortedFiles)` -1 )];
+	
+	// If opened file is not the most current file, notify user.
+	if ($latestFile != $currFile){
+		error ("NOT SAVED!  "+$latestFile+" may be being worked on in parellel");
+	}
+
+	// Separate file name into Character/Asset/VersionNumber/ArtistName/Comment
+	string $filePieces[];
+	tokenize $latestFile "_" $filePieces;
+	int $pieceCount = (`size($filePieces)`)-1;
+	if (`gmatch $filePieces[$pieceCount] "*\\.ma"`){
+		$fileType = ".ma";
+	}else{
+		$fileType = ".mb";
+	};
+	$filePieces[$pieceCount] = `substitute $fileType $filePieces[$pieceCount] ""`;
+	
+	//////////////////////////////////////////////////////////////////////////
+	// SAVE NEW FILE
+	//////////////////////////////////////////////////////////////////////////
+	
+	int $digit = $filePieces[2];
+	string $newVersion = jer_incDigit($digit, $increment, $padding);
+	
+	///////////////////////////////////////////////////////////////////////////
+	// Starting incremental save
+	// Query Username
+	string $userName = `system("echo %username%")`;
+	string $nickName = `match "^..." $userName`;
+	string $newComment;
+	print ("Hello " + $nickName + ".  Let's try backin up this file for you.\n");
+	string $saveNew;
+	string $newFile;
+	
+	// Prompt for short comment.
+	// If no comment is typed, "NoComment" is added.
+	$saveNew = 	`promptDialog -title "Increment Work File"
+							-message "Please enter new comment."
+							-text "<EnterShortDescription>"
+							-button "Save"
+							-button "Cancel"
+							-defaultButton "Save"
+							-cancelButton "Cancel"
+							-dismissString "Cancel"`;
+	
+	if ( $saveNew == "Save" ){
+		$newComment = `promptDialog -query`;	
+		if ($newComment == "<EnterShortDescription>"){
+			$newComment = "NoComment";
+			catchQuiet (`error "File saved"`);
+			warning "File saved with genaric comment.";
+		};
+	// Construct	
+		$newComment = `jer_replaceAll " " $newComment "_"`;
+		$newFile = ($filePieces[0]+"_"+$filePieces[1]+"_"+$newVersion+"_"+$nickName+"_"+$newComment+$fileType);
+		if(`filetest -f $newFile`) {
+			print("Warning: " + $newFile + " already exists, file not saved\n");
+		}
+			file -rn ($dirName+"/"+$filePieces[0]+"_"+$filePieces[1]+"_"+$newVersion+"_"+$nickName+"_"+$newComment+$fileType);
+			file -save;
+		
+		print ("SAVED: "+$dirName+"/"+$filePieces[0]+"_"+$filePieces[1]+"_"+$newVersion+"_"+$nickName+"_"+$newComment+$fileType+"\n");
+		
+		jer_saveAnim_Publish( $filePieces, $assetFolder, $dirName, $newVersion, $userName, $newComment, $fileType);
+		
+	}else{
+		error "Incremental save cancelled.";
+	};				
+} // END PROC jer_saveAnimInc
+
+// OMITIONS
+
+			//file -rn ($assetFolder+"/"+$filePieces[0]+"_"+$filePieces[1]+".ma");
+			//file -save;
+			//file -rn ($dirName+"/"+$filePieces[0]+"_"+$filePieces[1]+"_"+$newVersion+"_"+$nickName+"_"+$newComment+".ma");

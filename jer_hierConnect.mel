@@ -1,0 +1,88 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+ jer_hierConnect
+ Created by: Jeremy Sabo on May 07, 2007
+ Inspired by: Devan Mussato, Teurnis Deraat & Hans
+ Desc: Creates a group around the currently selected object(s).
+ 	Uses the transforms of first selected object in an attempt to zero out the 
+	transforms on the objects.
+	Creates duplicate "hier" node.
+	Connects attributes of control to "hier" node.
+	
+Requires: jer_groupToZero.mel
+Requires: jer_transConnect.mel
+
+//////////////////////////////////////////////////////////////////////////////
+*/
+
+
+///////////////////////////////////////////
+// RENAME PROC
+global proc string jer_hierConnect_rename(string $null){
+string $newName;
+if (`gmatch $null "*Grp"`){
+	$newName = `substitute Grp $null "Hier"`;
+}else if (`gmatch $null "*_null"`){
+	$newName = `substitute _null $null "_hier"`;
+}else {
+	error "Not a \"Grp\" or \"hier\"";
+}
+
+return $newName;
+
+} // END PROC jer_hierConnect_rename
+
+
+///////////////////////////////////////////
+// ~ MAIN ~ PROC
+global proc jer_hierConnect(){
+
+string $sel[] = `ls -sl`;
+string $each;
+string $null;
+string $hier;
+string $ctrlChildren[];
+
+for ($each in $sel){
+	select -r $each;
+	//Create null to zero selected transform
+	$null = `jer_groupToZero`;
+	print ("null is "+$null+"\n");
+	// Create `hier` node name
+	$hier = `jer_hierConnect_rename $null`;
+	
+	string $dupName[] = `duplicate -po -n $hier $null`;
+	$hier = $dupName[0];
+	
+	parent $hier $null;
+	
+	// Connect `ctrl` to `hier`
+	select -r $each $hier;
+	jer_transConnect;
+
+	connectAttr -f ($each+".rotateOrder") ($hier+".rotateOrder");
+
+	$ctrlChildren = `listRelatives -c -type "transform" $each`;
+	
+	print ("parent");
+	print $ctrlChildren;
+	print (" to "+$hier+"\n");
+	
+	if (`size $ctrlChildren` != 0){
+		// Important, otherwise "parent" cmd will parent to current selection if no children exist
+		parent $ctrlChildren $hier;
+	}
+}
+
+} // END PROC jer_hierConnect //
+
+/* BONUS //
+// Testing
+source "/corp/home/jsabo/Desktop/jer_groupToZero.mel";
+source "/corp/home/jsabo/Desktop/jer_transConnect.mel";
+source "/corp/home/jsabo/Desktop/jer_hierConnect.mel";
+jer_hierConnect;
+
+*/	
+	
+	

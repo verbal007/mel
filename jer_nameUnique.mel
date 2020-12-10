@@ -1,0 +1,35 @@
+////////////////////////////////////////////////////////////////////////
+/*
+jer_nameUnique
+
+Created by Jeremy Sabo on Oct 21, 2006
+
+Desc:	Give a name and returns a guarenteed unique name,
+		no matter where	in the hierarchy the duplicates exist.
+		
+Usage:	jer_nameUnique objectName;
+*/
+////////////////////////////////////////////////////////////////////////
+
+global proc string jer_nameUnique(string $origName){
+	int $i = 0;
+	string $iString; // string of integer
+	string $name = $origName;
+	string $buffer;
+	string $substString;
+
+	// find a dup?
+	while (`objExists $name`){
+		$i+=1; // number of duplicates found
+		$iString = $i;
+		$buffer = `match "[0-9]*$" $origName`;
+		$substStr = ($buffer+"$");
+		$name = `substitute $substStr $origName $iString`;
+	}
+	
+	if ($i > 0){
+		print ("Duplicates found, renamed to "+$name+" :: from jer_nameUnique.mel\n");
+	}
+
+	return $name;
+} // END //

@@ -1,0 +1,25 @@
+//////////////////////////////////////////////////////////////
+/* jer_selBindJnts
+
+Created by Jeremy Sabo on Jan 12, 2006
+
+Desc: Selects all joints with radius of 2 (Bind Joints)
+
+*/
+//////////////////////////////////////////////////////////////
+global proc jer_selBindJnts(){
+	
+	string $each;
+	select -cl;
+	
+	// list joints
+	string $bindJnts[] = `ls -type "joint"`;
+	
+	// if joint radius is 2 toggle selection on joint
+	for ($each in $bindJnts){
+		if (`getAttr($each+".radius")`==2){
+			select -tgl $each;
+		}
+	}
+	
+} // END proc jer_selBindJnts

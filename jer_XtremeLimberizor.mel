@@ -1,0 +1,286 @@
+//////////////////////////////////////////////////////////////////////////////
+/* jer_XtremeLimberizor
+
+	Created by Jeremy Sabo on Jan 24, 2006
+
+	Requirements: jer_snapePos
+	Joint naming = position_name_suffix
+i.e. L_Shoulder_JNT, L_BearKnee_JNT or R_Wrist_Temp_JNT) is OK
+L_FK_Shoulder_JNT will NOT work.  Script assumes the first part, before the
+underscore is a position identifier.  The second part is the name of the object 
+Anything after the second underscore is assumed to be the suffix (including more underscores).
+
+	Desc: Create FK / IK arm with stretchy
+
+	Modules: - Twist Joint (twist parent or twist child
+		- Create straight blender
+		- Create stretchy
+		- Create aim
+		
+		jer_snapPos
+		rt_IkFkSetup - Rev 2 on Jan 25, 2006
+		jer_rotBlendColor - blender
+
+*/
+//////////////////////////////////////////////////////////////////////////////
+
+
+global proc jer_XtremeLimberizor(){
+
+// Delete window if it already exists
+if (`window -exists jer_XtremeLimb_WIN`){
+		deleteUI jer_XtremeLimb_WIN;
+} // END - if (`window -exists testWindow`)
+
+window -title "Jer\'s Xtr3me LimB0riz0r" -widthHeight 300 400 jer_XtremeLimb_WIN;
+   
+   //------------------------------------------------------------
+   // CREATE FORMLAYOUT CONTROLS
+	string $form = `formLayout -numberOfDivisions 100`;
+	
+	// TITLE
+	string $title1 = 	`text -label "Let\'s make an arm, shall we?" -align "center" -font "fixedWidthFont"`;
+	string $separator1 = 				`separator -height 10 -style "out"`;
+	//--------------------------
+	
+	// JOINT SUFFIX
+	string $jntSuf_TXT = 	`text -label "Joint Suffix :" -align "left" -w 50 -h 22`;
+	string $jntSuf_TXF = 	`textField -text "JNT"`; 			
+	
+	// ID JOINTS
+	string $IDJnts_TXT 	= 	`text -label "Identify Limb Components" -align "right" -w 200 -h 13`; // ** 13 magic height
+	
+	string $IDJnts_Top_TXF = 	`textField -text "<shoulder/hip>"`;
+	string $IDJnts_Top_BTN = 	`button -label "Top Joint   *update*" -w 100 -h 22
+									-c ("jer_IDJnts_Top_CMD " + $IDJnts_Top_TXF + " " + $jntSuf_TXF)`; // COMMAND
+									
+	string $IDJnts_Mid_TXF = 	`textField -text "<elbow/knee>"`;
+	string $IDJnts_Mid_BTN = 	`button -label "Med Joint   *update*" -w 100 -h 22
+									-c ("jer_IDJnts_Mid_CMD " + $IDJnts_Mid_TXF)`; // COMMAND
+									
+	string $IDJnts_End_TXF = 	`textField -text "<wrist/ankle>"`;
+	string $IDJnts_End_BTN = 	`button -label "End Joint   *update*" -w 100 -h 22
+									-c ("jer_IDJnts_End_CMD " + $IDJnts_End_TXF)`; // COMMAND
+	
+	string $separator2 = 	`separator -height 10 -style "out"`;
+	//--------------------------			
+	
+	// CONTROL SUFFIX
+	string $ctrlSuf_TXT = 	`text -label "Control Suffix : " -align "left" -w 50 -h 22`;
+	string $ctrlSuf_TXF = 	`textField -text "c"`;
+	string $separator3 = 	`separator -height 10 -style "out"`;
+   //--------------------------
+	
+	// LIMB TYPE - IK, FK or BOTH
+ 	string $title2 = 	`text -label "Fancy Features" -align "center" -font "fixedWidthFont"`;
+ 	string $limbType_RAD =  `radioButtonGrp -numberOfRadioButtons 3 -columnWidth4 90 60 60 60 -adjustableColumn 1 -columnAlign 1 left
+ 		-label "Limb Type" -labelArray3 "FK" "IK" "Both" -select 3`;
+ 	string $limbSide_RAD =  `radioButtonGrp -numberOfRadioButtons 2 -columnWidth3 90 60 60 -adjustableColumn 1 -columnAlign 1 left
+ 		-label "Limb Side" -labelArray2 "Left" "Right"`;
+	string $separator4 = 	`separator -height 10 -style "out"`;
+	//--------------------------
+	
+	string $stretch_CHK = `checkBox -label "Stretchy" -align "left"`;
+	string $volume_CHK = `checkBox -label "Volume" -align "left"`;
+	// SKIP JOINTS
+
+	string $separator5 =		`separator -height 10 -style "out"`;
+	//--------------------------
+	
+	// - BUILD CONTROLS ------------------------
+	string $GO_BTN = 	`button -label "Build Controls..."
+									-c ("jer_GO_CMD ")`; // COMMAND
+	
+
+     			
+	// ORGANIZE CONTROLS
+	formLayout -edit
+	// - 0 TITLE ---------------------------------------
+		-attachForm					$title1     "top"				5
+		-attachForm					$title1     "left"			5
+		-attachNone					$title1     "bottom"
+		-attachPosition			$title1     "right"			0 50
+		
+				
+		-attachControl				$title2     "top" 		5	$separator3
+		-attachForm					$title2     "left"		5
+		-attachNone					$title2     "bottom"
+		-attachPosition			$title2     "right"	0	50
+		
+		
+		-attachControl				$separator1     "top" 		0	$title1
+		-attachForm					$separator1     "left"		5
+		-attachNone					$separator1     "bottom"
+		-attachForm					$separator1     "right"		5
+	// - 1 ID JOINTS -----------------------------------
+		
+		-attachControl				$IDJnts_TXT     "top"		5	$separator1
+		-attachForm					$IDJnts_TXT     "left"		5
+		-attachNone					$IDJnts_TXT     "bottom"
+		-attachNone					$IDJnts_TXT     "right"
+		
+		-attachControl				$IDJnts_Top_BTN     "top"		5	$IDJnts_TXT
+		-attachForm					$IDJnts_Top_BTN     "left"		5
+		-attachNone					$IDJnts_Top_BTN     "bottom"
+		-attachPosition			$IDJnts_Top_BTN     "right"	0 50
+		
+		-attachOppositeControl	$IDJnts_Top_TXF     "top"		0	$IDJnts_Top_BTN
+		-attachControl				$IDJnts_Top_TXF     "left"		0	$IDJnts_Top_BTN
+		-attachOppositeControl	$IDJnts_Top_TXF     "bottom"	0	$IDJnts_Top_BTN
+		-attachForm					$IDJnts_Top_TXF     "right"	5
+		
+		-attachControl				$IDJnts_Mid_BTN     "top"		5	$IDJnts_Top_TXF
+		-attachForm					$IDJnts_Mid_BTN     "left"		5
+		-attachNone					$IDJnts_Mid_BTN     "bottom"
+		-attachPosition			$IDJnts_Mid_BTN     "right"	0 50
+		
+		-attachOppositeControl	$IDJnts_Mid_TXF     "top"		0	$IDJnts_Mid_BTN
+		-attachControl				$IDJnts_Mid_TXF     "left"		0	$IDJnts_Mid_BTN
+		-attachOppositeControl	$IDJnts_Mid_TXF     "bottom"	0	$IDJnts_Mid_BTN
+		-attachForm					$IDJnts_Mid_TXF     "right"	5
+		
+		-attachControl				$IDJnts_End_BTN     "top"		5	$IDJnts_Mid_TXF
+		-attachForm					$IDJnts_End_BTN     "left"		5
+		-attachNone					$IDJnts_End_BTN     "bottom"
+		-attachPosition			$IDJnts_End_BTN     "right"	0 50
+		
+		-attachOppositeControl	$IDJnts_End_TXF     "top"		0	$IDJnts_End_BTN
+		-attachControl				$IDJnts_End_TXF     "left"		0	$IDJnts_End_BTN
+		-attachOppositeControl	$IDJnts_End_TXF     "bottom"	0	$IDJnts_End_BTN
+		-attachForm					$IDJnts_End_TXF     "right"	5
+		
+		-attachControl				$jntSuf_TXT     "top"		5	$IDJnts_End_TXF
+		-attachForm					$jntSuf_TXT     "left"		5
+		-attachNone					$jntSuf_TXT     "bottom"
+		-attachPosition			$jntSuf_TXT     "right"		0	24
+	        
+		-attachOppositeControl	$jntSuf_TXF     "top"		0	$jntSuf_TXT
+		-attachControl				$jntSuf_TXF     "left"		0	$jntSuf_TXT
+		-attachNone					$jntSuf_TXF     "bottom"
+		-attachPosition			$jntSuf_TXF     "right"		0	48
+		
+		-attachOppositeControl	$ctrlSuf_TXT     "top"		0	$jntSuf_TXF
+		-attachControl				$ctrlSuf_TXT     "left"		5	$jntSuf_TXF
+		-attachNone					$ctrlSuf_TXT     "bottom"
+		-attachPosition			$ctrlSuf_TXT     "right"	0	72
+	        
+		-attachOppositeControl	$ctrlSuf_TXF     "top"		0	$ctrlSuf_TXT
+		-attachControl				$ctrlSuf_TXF     "left"		0	$ctrlSuf_TXT
+		-attachNone					$ctrlSuf_TXF     "bottom"
+		-attachForm					$ctrlSuf_TXF     "right"	5
+		
+		-attachControl				$separator2     "top" 		5	$ctrlSuf_TXF
+		-attachForm					$separator2     "left"		5
+		-attachNone					$separator2     "bottom"
+		-attachForm					$separator2     "right"		5
+	// - 2 -----------------------------------
+	
+		-attachControl				$limbType_RAD     "top" 		5	$separator2
+		-attachForm					$limbType_RAD     "left"		5
+		-attachNone					$limbType_RAD     "bottom"
+		-attachForm					$limbType_RAD     "right"		5
+
+		-attachControl				$limbSide_RAD     "top" 		5	$limbType_RAD
+		-attachForm					$limbSide_RAD     "left"		5
+		-attachNone					$limbSide_RAD     "bottom"
+		-attachForm					$limbSide_RAD     "right"		5
+		
+		-attachControl				$separator3     "top" 		5	$limbSide_RAD
+		-attachForm					$separator3     "left"		5
+		-attachNone					$separator3     "bottom"
+		-attachForm					$separator3     "right"		5
+	// - 3 -----------------------------------
+		
+		-attachControl				$title2     "top" 		5	$separator3
+		-attachForm					$title2     "left"		5
+		-attachNone					$title2     "bottom"
+		-attachPosition			$title2     "right"	0	50
+				
+		-attachControl				$stretch_CHK     "top" 		5	$title2
+		-attachForm					$stretch_CHK     "left"		5
+		-attachNone					$stretch_CHK     "bottom"
+		-attachPosition			$stretch_CHK     "right"	0	50
+		
+		-attachOppositeControl	$volume_CHK     "top" 		0	$stretch_CHK
+		-attachControl				$volume_CHK     "left"		5	$stretch_CHK
+		-attachNone					$volume_CHK     "bottom"
+		-attachForm					$volume_CHK     "right"		5
+		
+		-attachControl				$separator4     "top" 		5	$volume_CHK
+		-attachForm					$separator4     "left"		5
+		-attachNone					$separator4     "bottom"
+		-attachForm					$separator4     "right"		5
+	// - 4 -----------------------------------
+
+		-attachControl				$separator5    "top" 		5	$separator4
+		-attachForm					$separator5    "left"		5
+		-attachNone					$separator5    "bottom"
+		-attachForm					$separator5    "right"		5
+	// - 5 -----------------------------------
+		
+		-attachControl				$GO_BTN     "top" 	5	$separator5
+		-attachForm					$GO_BTN     "left"	5
+		-attachPosition			$GO_BTN     "bottom"	5	100
+		-attachForm					$GO_BTN     "right"	5
+
+	$form;
+
+showWindow jer_XtremeLimb_WIN;
+
+	
+}// END proc jer_XtremeLimberizor
+// ---------------------------------------------------------------------------
+
+
+//----------------------------------------------------------------------------
+// - Query Top Joint ---------------------------------------------------------
+//----------------------------------------------------------------------------
+global proc jer_IDJnts_Top_CMD(string $IDJnts_Top_TXF, string $jntSuf_TXF){
+	string $pieces[];
+	string $suffix;
+	string $sel[] = `ls -sl`;	
+
+	if (`nodeType $sel[0]` == "joint"){
+		print "Top Joint identified.";
+	} else {	
+		error "ZOIKS\!\! Please select top joint (i.e. shoulder or knee joint)";
+	}
+	textField -edit -text $sel[0] $IDJnts_Top_TXF;
+	
+	tokenize $sel[0] "_" $pieces;
+	$suffix = $pieces[(`size($pieces)`)-1];
+	textField -edit -text $suffix $jntSuf_TXF;
+}
+
+//----------------------------------------------------------------------------
+// - Query Mid Joint ---------------------------------------------------------
+//----------------------------------------------------------------------------
+global proc jer_IDJnts_Mid_CMD(string $IDJnts_Mid_TXF){
+	string $sel[] = `ls -sl`;	
+
+	if (`nodeType $sel[0]` == "joint"){
+		print "Mid Joint identified.";
+	} else {	
+		error "ZOIKS\!\! Please select top joint (i.e. shoulder or knee joint)";
+	}
+	textField -edit -text $sel[0] $IDJnts_Mid_TXF;
+}
+
+//----------------------------------------------------------------------------
+// - Query End Joint ---------------------------------------------------------
+//----------------------------------------------------------------------------
+global proc jer_IDJnts_End_CMD(string $IDJnts_End_TXF){
+	string $sel[] = `ls -sl`;	
+
+	if (`nodeType $sel[0]` == "joint"){
+		print "End Joint identified.";
+	} else {	
+		error "ZOIKS\!\! Please select top joint (i.e. shoulder or knee joint)";
+	}
+	textField -edit -text $sel[0] $IDJnts_End_TXF;
+}
+
+
+
+///////  FOR TESTING
+// source jer_XtremeLimberizor;  jer_XtremeLimberizor; 

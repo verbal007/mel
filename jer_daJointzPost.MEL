@@ -1,0 +1,54 @@
+///////////////////////////////////
+// jer_addJointzPost
+// Created by: Jeremy Sabo on Apr 22, 2005
+// Usage: 		Select bound mesh and run script.
+// 				Copy / paste the line created in the script editor window.
+// Inspiration:Orcs of Warhammer 40k
+
+global proc jer_daJointzPost(){
+
+	string $infJnts[];
+	string $data;
+	
+	string $sel[] = `ls -sl`;
+
+	string $jntAry[] = `skinCluster -q -wi $sel[0]`;
+	string $skinCluster = `findRelatedSkinCluster $sel[0]`;
+
+	//print $jntAry;
+	
+	string $fileName = (`internalVar -userTmpDir` + "jer_daJntz.txt");
+	int $fileID = `fopen $fileName "r"`;
+	string $data = `fgetline $fileID`;
+	string $cleanData[];
+	
+	while (size($data) > 0){
+		tokenize $data $cleanData;
+		$infJnts[`size($infJnts)`] = $cleanData[0];
+		$data = `fgetline $fileID`;
+	};	
+	fclose $fileID;
+	
+	print $infJnts;
+	
+	string $src;
+	string $trg;
+	
+	int $num1;
+	int $num2;
+	
+	string $diff[] = stringArrayRemove($jntAry, $infJnts);
+	print $diff;
+	
+	string $newInf;
+	for ($newInf in $diff){
+		skinCluster -e  -dr 9 -lw true -wt 0 -ai $newInf $sel[0];
+	};
+	
+	string $jntStr = stringArrayToString($diff, "\",\"");
+	string $command = ("string $unmatched[] = \{\""+$jntStr+"\"\}\;");
+	print "\n*******************************************************\n";
+	print "Copy & paste this command in your clipboard for later. \n*******************************************************\n";
+	print $command;
+};
+

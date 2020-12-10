@@ -1,0 +1,39 @@
+//////////////////////////////////////////////////////////////////////////////
+// jer_autoProxMatch v1b
+// Created by: Jeremy Sabo on Mar 23, 2005
+// Update: Mar 24, 2005 - Removed PRX suffix
+// Description:  Run script and it will match up proxy geo mesh peices w/ 
+//               corresponding joints.
+
+global proc jer_autoProxMatch(){
+	
+	string $jnts[] = `ls -typ "joint"`;
+	
+	// string $meshs[] = `ls -typ "mesh"`;
+	string $meshs[] = `ls -sl -typ "mesh"`;
+	
+	string $jnt;
+	string $mesh;
+	string $jntMatch;
+	
+	string $dad[];
+	
+	for ($jnt in $jnts){
+		$jntMatch = `substitute "_JNT" $jnt ""`;
+		//print ("\nsubstite name ="+$jntMatch+"\n");
+		for ($mesh in $meshs){
+			$dad = `listRelatives -p $mesh`;
+			//print ("\nGEO is "+$dad[0]+"\n");
+			//print ("...parented under"+$jnt+"\n\n");
+			if (`gmatch $dad[0] ("*"+$jntMatch)`){
+				parent $dad[0] $jnt;
+				print ("\nParenting "+$dad[0]+" under "+$jnt);
+			}
+			
+		}// END for
+	} // END for
+	
+	clear $meshs;
+	clear $jnts;
+	clear $dad;
+}

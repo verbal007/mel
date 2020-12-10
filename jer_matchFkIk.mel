@@ -1,0 +1,152 @@
+//////////////////////////////////////////////////////////////////////////////
+/*  jer_matchFkIk
+
+Created by: Jeremy Sabo - on Feb 24, 2004
+Update:		2008/10/27 - matched to DR2 rig
+
+Desc: Script used to setup auto matching script on IK/FK arm.
+
+*/
+//////////////////////////////////////////////////////////////////////////////
+
+// MATCH IK ARM POSITION TO FK ARM ///////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+global proc jer_matchFkIk_fk2ik(string $fkShoulder, string $fkElbow,
+								string $ikShoulder, string $ikElbow){
+
+float $rot[];
+string $rotConst[];
+string $nullTemp = "jer_matchFkIk_nul";
+string $fkMcShoulder = `substitute "_c$" $fkShoulder "_mcGrp"`;
+string $fkMcElbow = `substitute "_c$" $fkElbow "_mcGrp"`;
+
+if (!`objExists $nullTemp`){
+	// upper limb
+	group -em -n $nullTemp;
+}
+	parent $nullTemp $fkMcShoulder;
+	$rotConst = `orientConstraint $ikShoulder $nullTemp`;
+	$rot = `getAttr ($nullTemp+".r")`;
+	print ("Rotations are "+$rot[0]+" "+$rot[1]+" "+$rot[1]+"\n");
+
+	delete $rotConst[0];
+	delete $nullTemp;
+
+	setAttr ($fkShoulder+".r") $rot[0] $rot[1] $rot[2];
+	// mid limb
+	group -em -n $nullTemp;
+	parent $nullTemp $fkMcElbow;
+	$rotConst = `orientConstraint $ikElbow $nullTemp`;
+	$rot = `getAttr ($nullTemp+".r")`;
+
+	delete $rotConst[0];
+	delete $nullTemp;
+
+	setAttr ($fkElbow+".r") $rot[0] $rot[1] $rot[2];
+
+
+
+} // END // global proc jer_matchFkIk_fk2ik
+
+
+// MATCH IK ARM POSITION TO FK ARM ///////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////
+global proc jer_matchFkIk_ik2fk(string $fkShoulder, string $fkElbow, string $fkWrist,
+								string $endEffector, string $poleVector){
+    int $distance = 10;
+    // Use xform's -rp to get worldspace coordinates.
+	float $shoulderLoc[3] = `xform -q -ws -rp $fkShoulder`;
+	float $elbowLoc[3] = `xform -q -ws -rp $fkElbow`;
+	float $wristLoc[3] = `xform -q -ws -rp $fkWrist`;
+
+	// HALFWAY POINT BETWEEN SHOULD & WRIST of FK arm.
+	float $halfwayLoc[3] = {(($shoulderLoc[0]+$wristLoc[0])/2), (($shoulderLoc[1]+$wristLoc[1])/2), (($shoulderLoc[2]+$wristLoc[2])/2)};
+	print $halfwayLoc;
+
+	// MAGNITUDE (distance) FROM HALFWAY POINT TO ELBOW
+	float $mag = sqrt(pow(($elbowLoc[0]-$halfwayLoc[0]), 2)
+	             +pow(($elbowLoc[1]-$halfwayLoc[1]), 2)
+	             +pow(($elbowLoc[2]-$halfwayLoc[2]), 2));
+	
+	// UNITIZE (normalize) VECTOR
+	float $norm = 1 / $mag;
+	float $unitVec[3] = {(($elbowLoc[0]-$halfwayLoc[0])*$norm),
+							(($elbowLoc[1]-$halfwayLoc[1])*$norm),
+	             		(($elbowLoc[2]-$halfwayLoc[2])*$norm)};
+	// OFFSET MAGNITUDE by $distance
+	$newMag = ($mag+$distance);
+	
+	// MULTIPLY UNIT VECTOR BY DISTANCE - Creating new vector that parallels.
+	float $newVec[3] = {($unitVec[0]*$newMag), ($unitVec[1]*$newMag),($unitVec[2]*$newMag)};
+	
+	// ADD NEW & OLD $elbow VECTOR COORDINATES- New coordinate is $distance units further out from $elbow.
+	float $finalVec[3] = {($elbowLoc[0] + $newVec[0]), ($elbowLoc[1] + $newVec[1]),($elbowLoc[2] + $newVec[2])};
+
+	// POSITION IK CONTROLS - Move polevector & hand control.
+	move -ws $finalVec[0] $finalVec[1] $finalVec[2] $poleVector;
+	move -ws $wristLoc[0] $wristLoc[1] $wristLoc[2] $endEffector;
+		
+}; // END // proc jer_matchIkToFk
+
+
+    
+//////////////////////////////////////////////////////////////////////////////
+// MAIN PROCEDURE  ///////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////
+
+global proc jer_matchFkIk(){
+
+// DECLARATIONS
+int $distance = 10;
+float $rotate[];
+string $sel[] = `ls -sl`;
+string $buffer = `match "[^:]*$" $sel[0]`;
+string $prefix = `substitute $buffer $sel[0] ""`;
+
+string $LorR = `match "^." $buffer`;
+
+string $fkShoulder = ($prefix+$LorR+"_upperarm_c");
+string $fkElbow = ($prefix+$LorR+"_forearm_c");
+string $fkWrist = ($prefix+"fk_"+$LorR+"_hand");
+string $poleVector = ($prefix+$LorR+"_arm_poleVec_c");
+string $endEffector = ($prefix+$LorR+"_arm_ik_c");
+
+string $fkArmStuff[] = {($prefix+$LorR+"_upperarm_c"),($prefix+$LorR+"_forearm_c"), ($prefix+"fk_"+$LorR+"_hand"),($prefix+$LorR+"_hand_c")};
+string $ikArmStuff[] = {($prefix+$LorR+"_arm_ik_c"),($prefix+$LorR+"_arm_poleVec_c"),
+						($prefix+"ik_"+$LorR+"_upperarm"),($prefix+"ik_"+$LorR+"_forearm")};
+string $fkLegStuff[] = {($prefix+$LorR+"_thigh_c"),($prefix+$LorR+"_calf_c"),($prefix+$LorR+"_foot_c"),($prefix+$LorR+"_toe_c")};
+string $ikLegStuff[] = {($prefix+$LorR+"_leg_ik_c"),($prefix+$LorR+"_leg_poleVec_c"),
+						($prefix+"ik_"+$LorR+"_thigh"),($prefix+"ik_"+$LorR+"_calf")};
+
+int $fkArmFound = stringArrayContains($sel[0], $fkArmStuff);
+print $fkArmFound;
+print $sel[0];
+print "\n";
+print $fkArmStuff;
+int $ikArmFound = stringArrayContains($sel[0], $ikArmStuff);
+int $fkLegFound = stringArrayContains($sel[0], $fkLegStuff);
+int $ikLegFound = stringArrayContains($sel[0], $ikLegStuff);
+
+if ($fkArmFound){
+	print "matching arm fk to ik";
+	jer_matchFkIk_fk2ik $fkArmStuff[0] $fkArmStuff[1] $ikArmStuff[2] $ikArmStuff[3];
+} else if ($ikArmFound){
+	print "matching arm ik to fk";
+	jer_matchFkIk_ik2fk ($fkArmStuff[0], $fkArmStuff[1], $fkArmStuff[2],
+						$ikArmStuff[0], $ikArmStuff[1]);
+
+} else if ($fkLegFound){
+    print "matching leg fk to ik";
+	jer_matchFkIk_fk2ik $fkLegStuff[0] $fkLegStuff[1] $ikLegStuff[2] $ikLegStuff[3];
+
+} else if ($ikLegFound){
+    print "matching leg ik to fk";
+    jer_matchFkIk_ik2fk ($fkLegStuff[0], $fkLegStuff[1], $fkLegStuff[2],
+						$ikLegStuff[0], $ikLegStuff[1]);
+
+} else {
+	error "Select a limb first.";
+};
+
+}; // END // global proc jer_matchFkToIk(){
+

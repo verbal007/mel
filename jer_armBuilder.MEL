@@ -1,0 +1,1029 @@
+//------------------------------------------------------------------------------------------------------------------
+//
+//	jer_armBuilder
+//
+//	written by Bernard Lessard & Jeremy Sabo on March 28 2006
+//
+//	Version 1.0
+//		April 06, 2006
+//
+//	Description:
+//
+//		Create a arm
+//
+//------------------------------------------------------------------------------------------------------------------
+
+// we need to build the FK IK for the arm
+source gen_procForJoints;
+
+// standard values
+global string $g_sCONSTBlendChannelName = "Blend_IK_FK";
+global float $g_fCONSTLocatorsMoveDistance = 1;
+
+//----------------------------------------------------------------//
+// procedure to check if we have a both IK and FK, so show the control or not
+//----------------------------------------------------------------//
+global proc jer_BuildArm(	string $allJoints[], string $TopJoint, string $EndJoint,int $limbType,
+										string $ControlKey, string $IKControl, int $IKstretch, int $volume,
+										int $elbow, string $IKElbowControl, int $numTopBND,
+										int $numEndBND, string $FKControls, string $controlSuf)
+{
+	$controlSuf = "_"+$controlSuf;
+	// change the orientation
+	// ** gen_setOrientJoint ( {0,1,0}, {0,0,1}, $allJoints);
+	// change rotation order of all the joints to YZX
+	gen_ChangeRotOrder($allJoints, 1);
+	
+	// build drivers joints
+	string $DRVJoints[] = gen_makeDRV($allJoints);
+	
+	// FK_IK
+	switch($limbType)
+	{
+		case 1:
+			jer_BuildArmFK($allJoints);
+			jer_SetFKControl($allJoints, $FKControls, $EndJoint, $TopJoint, $controlSuf);
+		break;
+		case 2:
+			jer_BuildArmIK($allJoints);
+			jer_setIKControl($IKControl, $TopJoint, $EndJoint, $controlSuf);
+		break;
+		case 3:
+			jer_BuildArmIKFK($ControlKey, $allJoints);
+			jer_setIKControl($IKControl, $TopJoint, $EndJoint, $controlSuf);
+			jer_SetFKControl($allJoints, $FKControls, $EndJoint, $TopJoint, $controlSuf);
+		break;
+	}
+	
+	// create BND
+	jer_createBNDJoints($allJoints, $DRVJoints, $TopJoint, $EndJoint, $numTopBND, $numEndBND);
+	
+	// set stretching
+	if($IKstretch == 1)
+	{
+		jer_setIKStretch($allJoints, $TopJoint, $EndJoint, $limbType, $ControlKey, $controlSuf);
+	}
+	
+	// set voluming
+	if($volume == 1)
+	{
+		jer_setVolume($allJoints, $ControlKey, $EndJoint, $TopJoint, $numTopBND, $numEndBND);
+	}
+	
+	// set elbowing
+	if($elbow == 1)
+	{
+		jer_setElbow($IKElbowControl, $EndJoint, $TopJoint, $controlSuf);
+	}
+}
+
+//----------------------------------------------------------------//
+// procedure to set the controls FK
+//----------------------------------------------------------------//
+global proc jer_SetFKControl(string $allJoints[], string $FKControls, string $EndJoint, string $TopJoint, string $controlSuf)
+{
+	string $previousControl;
+	for($i=0; $i<size($allJoints)-1; $i++)
+	{
+		string $FKJoint = $allJoints[$i]+"_FK_JNT";
+		// make control with stretch
+		// make a shape control
+		string $modelShape[] = `listRelatives -shapes $FKControls`;
+		string $model[] = `duplicate -name ($FKJoint+$controlSuf) ($modelShape[0])`;
+		string $control = $model[0];
+		// create the group (to get all the 0)
+		string $controlGroup =`group -name ($FKJoint+"_cGRP") $control`;
+		// put his visibility equal to the visibility of the FK joint
+		connectAttr -f ($TopJoint+"_FK_JNT.visibility") ($controlGroup+".visibility");
+		// set the order of the rotation
+		setAttr ($control+".rotateOrder") 1;	// YZX
+
+		// position the control where the joint is
+		string $pointConstraint[] =	`pointConstraint -offset 0 0 0 -weight 1 $FKJoint $controlGroup`;
+		string $orientConstraint[] =	`orientConstraint -weight 1 $FKJoint $controlGroup`;
+		delete $orientConstraint[0];
+		
+		// orient FK with the control
+		orientConstraint -weight 1 $control $FKJoint;
+		
+		if($allJoints[$i] != $EndJoint)
+		{
+			// add stretch
+			addAttr -longName "Stretch" -attributeType double -defaultValue 0 $control;
+			setAttr -edit -keyable true ($control+".Stretch");
+			shadingNode -name ($control+"_Stretch_ADL") -asUtility addDoubleLinear;
+			connectAttr -f ($control+".Stretch") ($control+"_Stretch_ADL.input2");
+			setAttr ($control+"_Stretch_ADL.input1") `getAttr ($allJoints[($i+1)]+"_FK_JNT.translateY")`;
+			connectAttr -f ($control+"_Stretch_ADL.output") ($allJoints[($i+1)]+"_FK_JNT.translateY");
+		}
+		
+		if($previousControl != "")
+		{
+			parent $controlGroup $previousControl;
+		}
+		$previousControl = $control;
+	}
+}
+
+//----------------------------------------------------------------//
+// procedure to set the elbow
+//----------------------------------------------------------------//
+global proc jer_setElbow(string $IKElbowControl, string $EndJoint, string $TopJoint, string $controlSuf)
+{
+	// control for IK
+	string $IKControl = ($EndJoint+"_IK_JNT"+$controlSuf);
+	string $IKHandle = ($EndJoint+"_IK_JNT_Handle");
+	// add elbow twist in the IK control
+	addAttr -longName "Elbow_Twist" -attributeType double -dv 0 $IKControl;
+	setAttr -e -keyable true ($IKControl+".Elbow_Twist");
+	connectAttr -f ($IKControl+".Elbow_Twist") ($IKHandle+".twist");
+	poleVectorConstraint $IKElbowControl $IKHandle;
+	connectAttr -f ($TopJoint+"_IK_JNT.visibility") ($IKElbowControl+".visibility");
+}
+
+//----------------------------------------------------------------//
+// procedure to set the volume
+//----------------------------------------------------------------//
+global proc jer_setVolume(string $allJoints[], string $ControlKey, string $EndJoint, string $TopJoint, int $numTopBND, int $numEndBND)
+{
+	string $DRVJoints[];
+	string $BNDJoints[];
+	// find DRV and BND joints Chain
+	for($i=0; $i<size($allJoints); $i++)
+	{
+		$DRVJoints[$i]=$allJoints[$i]+"_DRV_JNT";
+		$BNDJoints[$i]=$allJoints[$i]+"_BND_JNT";
+	}
+	
+	// add volume in the big control
+	addAttr -longName "Volume_ON_OFF" -attributeType double -min 0 -max 1 -dv 1 $ControlKey;
+	setAttr -e -keyable true ($ControlKey+".Volume_ON_OFF");
+	addAttr -longName "Volume_ADD" -attributeType double -dv 0 $ControlKey;
+	setAttr -e -keyable true ($ControlKey+".Volume_ADD");
+	// set the volume control
+	string $Volume_MD;
+	string $Volume_BC;
+	string $Volume_Clamp;
+	int $numOfMD=0;
+	for($i=0; $i<size($allJoints)-1; $i++)
+	{
+		if($i!=0)
+		{
+			if((($i-1)%3)==0)
+			{
+				$numOfMD++;
+				$Volume_MD = `shadingNode -name ($EndJoint+"_Volume_MD"+$numOfMD) -asUtility multiplyDivide`;
+				setAttr ($Volume_MD+".operation") 2;	// divide
+				$Volume_BC = `shadingNode -name ($EndJoint+"_Volume_BC"+$numOfMD) -asUtility blendColors`;
+				connectAttr -f ($ControlKey+".Volume_ON_OFF") ($Volume_BC+".blender");
+				$Volume_Clamp = `shadingNode -name ($EndJoint+"_Volume_BC"+$numOfMD) -asUtility clamp`;
+			}
+			string $XYZ;
+			string $RGB;
+			switch((($i-1)%3))
+			{
+				case 0:
+					$XYZ = "X";
+					$RGB = "R";
+				break;
+				case 1:
+					$XYZ = "Y";
+					$RGB = "G";
+				break;
+				case 2:
+					$XYZ = "Z";
+					$RGB = "B";
+				break;
+			}
+			// the % of volume
+			setAttr ($Volume_MD+".input1"+$XYZ) `getAttr ($DRVJoints[$i]+".translateY")`;
+			connectAttr -f ($DRVJoints[$i]+".translateY") ($Volume_MD+".input2"+$XYZ);
+			// add volume from big control
+			string $Volume_ADL = `shadingNode -name ($DRVJoints[$i]+"_Volume_ADL"+$i) -asUtility addDoubleLinear`;
+			connectAttr -f ($ControlKey+".Volume_ADD") ($Volume_ADL+".input1");
+			connectAttr -f ($Volume_MD+".output"+$XYZ) ($Volume_ADL+".input2");
+			// on off
+			connectAttr -f ($Volume_ADL+".output") ($Volume_BC+".color1"+$RGB);
+			setAttr ($Volume_BC+".color2"+$RGB) 1;
+			// clamp
+			setAttr ($Volume_Clamp+".min"+$RGB) 0.1;
+			setAttr ($Volume_Clamp+".max"+$RGB) 2;
+			connectAttr -f ($Volume_BC+".output"+$RGB) ($Volume_Clamp+".input"+$RGB);
+			connectAttr -f ($Volume_Clamp+".output"+$RGB) ($BNDJoints[$i]+".scaleX");
+			connectAttr -f ($Volume_Clamp+".output"+$RGB) ($BNDJoints[$i]+".scaleZ");
+			
+			// tw joints
+			if($i==1)
+			{
+				// set for first tw joints
+				for($j=1; $j<=$numTopBND; $j++)
+				{
+					string $BNDTwJNT = $TopJoint+"_BND_JNT_TW"+$j;
+					connectAttr -f ($Volume_Clamp+".output"+$RGB) ($BNDTwJNT+".scaleX");
+					connectAttr -f ($Volume_Clamp+".output"+$RGB) ($BNDTwJNT+".scaleZ");
+				}
+			} else if($i==(size($allJoints)-2))
+			{
+				string $DRVPreviousJNT[] = `listConnections -source on -destination off -type joint ($EndJoint+"_DRV_JNT")`;
+				string $BNDPreviousJNT = `substitute "_DRV_JNT" $DRVPreviousJNT[0] "_BND_JNT"`;
+				// set for last tw joints
+				for($j=1; $j<=$numEndBND; $j++)
+				{
+					string $BNDTwJNT = $BNDPreviousJNT+"_TW"+$j;
+					connectAttr -f ($Volume_Clamp+".output"+$RGB) ($BNDTwJNT+".scaleX");
+					connectAttr -f ($Volume_Clamp+".output"+$RGB) ($BNDTwJNT+".scaleZ");
+				}
+			}
+		}
+	}	
+}
+
+//----------------------------------------------------------------//
+// procedure to set the stretch
+//----------------------------------------------------------------//
+global proc jer_setIKStretch(string $allJoints[], string $TopJoint, string $EndJoint, int $limbType, string $ControlKey, string $controlSuf)
+{
+	// add stretch in IK control
+	string $IKControl = $EndJoint+"_IK_JNT"+$controlSuf;
+	addAttr -longName "Stretch_ON_OFF" -attributeType double -min 0 -max 1 -dv 1 $IKControl;
+	setAttr -e -keyable true ($IKControl+".Stretch_ON_OFF");
+	addAttr -longName "Stretch_ADD" -attributeType double -dv 0 $IKControl;
+	setAttr -e -keyable true ($IKControl+".Stretch_ADD");
+	
+	// we create locators
+	string $TopIK_JNT = $TopJoint+"_IK_JNT";
+	string $EndIK_JNT = $EndJoint+"_IK_JNT";
+	string $sourceIK_JNT[] = `listConnections -source on -destination off -type joint ($TopJoint+"_IK_JNT")`;
+	string $TopIK_LOC[] = `spaceLocator -name ($sourceIK_JNT[0]+"_LOC") -p 0 0 0`;
+	string $EndIK_LOC[] = `spaceLocator -name ($EndIK_JNT+"_LOC") -p 0 0 0`;
+	setAttr ($TopIK_LOC[0]+".visibility") 0;
+	setAttr ($EndIK_LOC[0]+".visibility") 0;
+	
+	// position them
+	string $contrain[] =`pointConstraint $TopIK_JNT $TopIK_LOC[0]`;
+	delete $contrain[0];
+	string $contrain[] =`pointConstraint $IKControl $EndIK_LOC[0]`;
+	delete $contrain[0];
+	// parent them
+	print ("SourceIKJNT="+$sourceIK_JNT[0] +" TopIK_LOC="+$TopIK_LOC[0]+"\n");
+	parentConstraint -maintainOffset -weight 1 $sourceIK_JNT[0] $TopIK_LOC[0];
+	parentConstraint -maintainOffset -weight 1 $IKControl $EndIK_LOC[0];
+	
+	// distanceBetween the IK TopJoint and IK EndJoint (using the locator)
+	string $Stretch_IK_DB = `shadingNode -name ($EndJoint+"_Stretch_IK_DB") -asUtility distanceBetween`;
+	connectAttr -f ($TopIK_LOC[0]+".worldMatrix[0]") ($Stretch_IK_DB+".inMatrix1");
+	connectAttr -f ($EndIK_LOC[0]+".worldMatrix[0]") ($Stretch_IK_DB+".inMatrix2");
+	// add distance with Stretch in control
+	string $Stretch_IK_ADL = `shadingNode -name ($EndJoint+"_Stretch_IK_ADL") -asUtility addDoubleLinear`;
+	connectAttr -f ($IKControl+".Stretch_ADD") ($Stretch_IK_ADL+".input1");
+	connectAttr -f ($Stretch_IK_DB+".distance") ($Stretch_IK_ADL+".input2");
+	// add distance with Stretch in control
+	string $Stretch_IK_COND = `shadingNode -name ($EndJoint+"_Stretch_IK_COND") -asUtility condition`;
+	connectAttr -f ($Stretch_IK_ADL+".output") ($Stretch_IK_COND+".firstTerm");
+	connectAttr -f ($Stretch_IK_ADL+".output") ($Stretch_IK_COND+".colorIfTrueR");
+	setAttr ($Stretch_IK_COND+".operation") 2;	// greater than
+	// calculate the initial value for when we start to stretch
+	float $initDistance = 0;
+	for($i=1; $i<(size($allJoints)-1); $i++)
+	{
+		$initDistance += `getAttr ($allJoints[$i]+"_IK_JNT.translateY")`;
+	}
+	setAttr ($Stretch_IK_COND+".secondTerm") $initDistance;
+	setAttr ($Stretch_IK_COND+".colorIfFalseR") $initDistance;
+	// let affect if the Stretch is on
+	string $Stretch_IK_BC = `shadingNode -name ($EndJoint+"_Stretch_IK_BC") -asUtility blendColors`;
+	connectAttr -f ($Stretch_IK_COND+".outColorR") ($Stretch_IK_BC+".color1R");
+	setAttr ($Stretch_IK_BC+".color2R") $initDistance;
+	connectAttr -f ($IKControl+".Stretch_ON_OFF") ($Stretch_IK_BC+".blender");
+	// let get the % value
+	string $Stretch_IK_MD1 = `shadingNode -name ($EndJoint+"_Stretch_IK_MD1") -asUtility multiplyDivide`;
+	connectAttr -f ($Stretch_IK_BC+".outputR") ($Stretch_IK_MD1+".input1X");
+	setAttr ($Stretch_IK_MD1+".input2X") $initDistance;
+	setAttr ($Stretch_IK_MD1+".operation") 2; //Divide Operation	
+	// for each joint
+	string $theStretchDistributerMD;
+	string $theIKFKDistributerBC;
+	int $numOfMD=0;
+	for($i=0; $i<size($allJoints)-1; $i++)
+	{
+		if($i!=0)
+		{
+			if((($i-1)%3)==0)
+			{
+				$numOfMD++;
+				$theStretchDistributerMD = `shadingNode -name ($EndJoint+"_Stretch_IK_MDDist"+$numOfMD) -asUtility multiplyDivide`;
+				// distribution blender IKFK
+				if($limbType == 3)
+				{
+					global string $g_sCONSTBlendChannelName;
+					$theIKFKDistributerBC = `shadingNode -name ($EndJoint+"_IKFK_BCDist"+$numOfMD) -asUtility blendColors`;
+					connectAttr -f ($ControlKey+"."+$g_sCONSTBlendChannelName) ($theIKFKDistributerBC+".blender");
+				}
+			}
+			switch((($i-1)%3))
+			{
+				case 0:
+					connectAttr -f ($Stretch_IK_MD1+".outputX") ($theStretchDistributerMD+".input1X");
+					setAttr ($theStretchDistributerMD+".input2X") `getAttr ($allJoints[$i]+"_IK_JNT.translateY")`;
+					connectAttr -f ($theStretchDistributerMD+".outputX") ($allJoints[$i]+"_IK_JNT.translateY");
+					// distribution blender IKFK
+					if($limbType == 3)
+					{
+						connectAttr -f ($allJoints[$i]+"_FK_JNT.translateY") ($theIKFKDistributerBC+".color1R");
+						connectAttr -f ($theStretchDistributerMD+".outputX") ($theIKFKDistributerBC+".color2R");
+						connectAttr -f ($theIKFKDistributerBC+".outputR") ($allJoints[$i]+"_DRV_JNT.translateY");
+					}
+					else
+					{
+						connectAttr -f ($theStretchDistributerMD+".outputX") ($allJoints[$i]+"_DRV_JNT.translateY");
+					}
+				break;
+				case 1:
+					connectAttr -f ($Stretch_IK_MD1+".outputX") ($theStretchDistributerMD+".input1Y");
+					setAttr ($theStretchDistributerMD+".input2Y") `getAttr ($allJoints[$i]+"_IK_JNT.translateY")`;
+					connectAttr -f ($theStretchDistributerMD+".outputY") ($allJoints[$i]+"_IK_JNT.translateY");
+					// distribution blender IKFK
+					if($limbType == 3)
+					{
+						connectAttr -f ($allJoints[$i]+"_FK_JNT.translateY") ($theIKFKDistributerBC+".color1G");
+						connectAttr -f ($theStretchDistributerMD+".outputY") ($theIKFKDistributerBC+".color2G");
+						connectAttr -f ($theIKFKDistributerBC+".outputG") ($allJoints[$i]+"_DRV_JNT.translateY");
+					}
+					else
+					{
+						connectAttr -f ($theStretchDistributerMD+".outputY") ($allJoints[$i]+"_DRV_JNT.translateY");
+					}
+				break;
+				case 2:
+					connectAttr -f ($Stretch_IK_MD1+".outputX") ($theStretchDistributerMD+".input1Z");
+					setAttr ($theStretchDistributerMD+".input2Z") `getAttr ($allJoints[$i]+"_IK_JNT.translateY")`;
+					connectAttr -f ($theStretchDistributerMD+".outputZ") ($allJoints[$i]+"_IK_JNT.translateY");
+					// distribution blender IKFK
+					if($limbType == 3)
+					{
+						connectAttr -f ($allJoints[$i]+"_FK_JNT.translateY") ($theIKFKDistributerBC+".color1B");
+						connectAttr -f ($theStretchDistributerMD+".outputZ") ($theIKFKDistributerBC+".color2B");
+						connectAttr -f ($theIKFKDistributerBC+".outputB") ($allJoints[$i]+"_DRV_JNT.translateY");
+					}
+					else
+					{
+						connectAttr -f ($theStretchDistributerMD+".outputZ") ($allJoints[$i]+"_DRV_JNT.translateY");
+					}
+				break;
+			}
+		}
+	}
+}
+
+//----------------------------------------------------------------//
+// procedure to set the control of the IK
+//----------------------------------------------------------------//
+global proc jer_setIKControl(string $IKControl, string $TopJoint, string $EndJoint, string $controlSuf)
+{
+	print $IKControl; //**
+	// create a control for IK
+	string $IKJoint = ($EndJoint+"_IK_JNT");
+	string $IKHandle = ($EndJoint+"_IK_JNT_Handle");
+	$IKControl = `rename $IKControl ($IKJoint+$controlSuf)`;
+	setAttr ($IKControl+".rotateOrder") 1;	// YZX
+	
+	// Y aim to the joint
+	string $IKControlGRP = ($IKJoint+"_GRP");
+	group -empty -name $IKControlGRP;
+	string $IKcontrain[] =`pointConstraint $IKJoint $IKControlGRP`;
+	delete $IKcontrain[0];
+	string $initOrient[] = `orientConstraint $IKJoint $IKControlGRP`;
+	delete $initOrient[0];
+	parent $IKControl $IKControlGRP;
+	makeIdentity -apply true -t 1 -r 1 -s 1 -n 0 $IKControl;
+	
+	// put his visibility equal to the visibility of the IK joint
+	connectAttr -f ($TopJoint+"_IK_JNT.visibility") ($IKControl+".visibility");
+
+	// be sure the joint will follow the control
+	string $DRVLocatorsUp = $IKJoint+"_up_VEC";
+	string $DRVLocatorsAim = $IKJoint+"_aim_VEC";	
+	//** string $IKHandlecontrain[] =`pointConstraint $IKControl $IKHandle`;
+	//** delete $IKHandlecontrain[0];
+	string $initOrient[] = `orientConstraint $IKJoint $IKControl`;
+	delete $initOrient[0];
+	orientConstraint $IKControl $IKJoint;
+	parent $IKHandle $IKControl;
+}
+
+//----------------------------------------------------------------//
+// procedure to build the arm with Both IK and FK
+//----------------------------------------------------------------//
+global proc jer_BuildArmIKFK(string $control, string $allJoints[])
+{
+	gen_BuildFKIK($control, $allJoints);
+	select -cl;
+}
+
+//----------------------------------------------------------------//
+// procedure to build the arm with IK
+//----------------------------------------------------------------//
+global proc jer_BuildArmIK(string $allJoints[])
+{
+	gen_makeIK($allJoints);
+	select -cl;
+}
+
+//----------------------------------------------------------------//
+// procedure to build the arm with FK
+//----------------------------------------------------------------//
+global proc jer_BuildArmFK(string $allJoints[])
+{
+	gen_makeFK($allJoints);
+	select -cl;
+}
+
+//----------------------------------------------------------------//
+// procedure to get the appropriate joint name equal to the joint
+//----------------------------------------------------------------//
+global proc string jer_getSameJoint(string $inJoints[], string $joint)
+{
+	string $realJoint;
+	for($inJnt in $inJoints)
+	{
+		if(`gmatch $inJnt ("*"+$joint+"*")`)
+		{
+			$realJoint = $inJnt;
+			break;
+		}
+	}
+	if(size($realJoint)<=0)
+	{
+		error "We did not find the joint.";
+	}
+	return $realJoint;
+}
+
+//----------------------------------------------------------------//
+// procedure to create BND with middle joints
+//	
+//	the joints are affected by the drivers joints
+//----------------------------------------------------------------//
+global proc jer_createBNDJoints(string $allJoints[], string $DRVJoints[], string $TopJoint, string $EndJoint, int $numTopBND, int $numEndBND)
+{	
+	// BND
+	// rename joints as BND to help the controls
+	string $BNDJoints[];
+	for($i=0; $i<size($allJoints); $i++)
+	{
+		$BNDJoints[$i] = `rename $allJoints[$i] ($allJoints[$i]+"_BND_JNT")`;
+		
+		if($i!=0)
+		{
+			orientConstraint $DRVJoints[$i] $BNDJoints[$i];
+		}
+		else
+		{
+			connectAttr -f ($DRVJoints[$i]+".rotateX") ($BNDJoints[$i]+".rotateX");
+			connectAttr -f ($DRVJoints[$i]+".rotateZ") ($BNDJoints[$i]+".rotateZ");
+		}
+	}
+	
+	// twist MD repartitor
+	string $Twist_MD = `shadingNode -name ($TopJoint+"_Twist_MD") -asUtility multiplyDivide`;
+	setAttr ($Twist_MD+".operation") 2; //Divide Operation
+	setAttr ($Twist_MD+".input2X") ($numTopBND+1);
+	setAttr ($Twist_MD+".input2Y") ($numEndBND+1);
+	
+	// lenght MD repartotor
+	string $BND_DRV_MD = `shadingNode -name ($TopJoint+"_Lenght_MD") -asUtility multiplyDivide`;
+	setAttr ($BND_DRV_MD+".operation") 2; //Divide Operation
+	setAttr ($BND_DRV_MD+".input2X") ($numTopBND+1);
+	setAttr ($BND_DRV_MD+".input2Y") ($numEndBND+1);
+	
+	// top
+	// we affect the MD by the next DRV joint
+	string $DRVTopJoint = jer_getSameJoint($DRVJoints, $TopJoint);
+	string $DRVNextTopJoint[] = `listRelatives -type "joint" -children $DRVTopJoint`;
+	connectAttr -f ($DRVNextTopJoint[0]+".translateY") ($BND_DRV_MD+".input1X");
+	connectAttr -f ($DRVTopJoint+".rotateY") ($Twist_MD+".input1X");
+
+	// we put the repartition over all the new joints
+	string $BNDTopJoint = jer_getSameJoint($BNDJoints, $TopJoint);
+	string $BNDNextTopJoint[] = `listRelatives -type "joint" -children $BNDTopJoint`;
+	connectAttr -f ($BND_DRV_MD+".outputX") ($BNDNextTopJoint[0]+".translateY");
+	connectAttr -f ($Twist_MD+".outputX") ($BNDNextTopJoint[0]+".rotateY");
+	select $BNDTopJoint;
+	string $BNDNextJoint[] = `listRelatives -type "joint" -children $BNDTopJoint`;
+	string $name;
+	for($i = 0; $i<$numTopBND; $i++)
+	{
+		// create new joints parent it together
+		$name = ($BNDTopJoint+"_TW"+($i+1));
+		joint -relative -rotationOrder yzx -name $name;
+		$newTopJoints[$i] = $name;
+		// and set the MD translateY
+		connectAttr -f ($BND_DRV_MD+".outputX") ($name+".translateY");
+		connectAttr -f ($Twist_MD+".outputX") ($name+".rotateY");
+		select $name;
+	}
+	select -cl;
+	// and parent to the BND joint chain
+	if($numTopBND>0)
+	{
+		parent $BNDNextJoint[0] $name;
+		connectAttr -f ($name+".scale") ($BNDNextJoint[0]+".inverseScale");
+	}
+	
+	// bottom
+	// we affect the MD by the next DRV joint
+	string $DRVEndJoint = jer_getSameJoint($DRVJoints, $EndJoint);
+	connectAttr -f ($DRVEndJoint+".translateY") ($BND_DRV_MD+".input1Y");
+	connectAttr -f ($DRVEndJoint+".rotateY") ($Twist_MD+".input1Y");
+
+	// we put the repartition over all the new joints
+	string $BNDEndJoint = jer_getSameJoint($BNDJoints, $EndJoint);
+	string $BNDPreviousEndJoint[] = `listRelatives -type "joint" -parent $BNDEndJoint`;
+	connectAttr -f ($BND_DRV_MD+".outputY") ($BNDEndJoint+".translateY");
+	connectAttr -f ($Twist_MD+".outputY") ($BNDEndJoint+".rotateY");
+
+	select $BNDPreviousEndJoint[0];
+	string $BNDNextJoint[] = `listRelatives -type "joint" -children $BNDPreviousEndJoint[0]`;
+	string $name = $BNDNextJoint[0];
+	for($i=0; $i<$numEndBND; $i++)
+	{
+		// create new joints parent it together
+		$name = ($BNDPreviousEndJoint[0]+"_TW"+($i+1));
+		joint -relative -rotationOrder yzx -name $name;
+		$newEndJoints[$i] = $name;
+		// and set the MD translateY
+		connectAttr -f ($BND_DRV_MD+".outputY") ($name+".translateY");
+		connectAttr -f ($Twist_MD+".outputY") ($name+".rotateY");
+		select $name;
+	}
+	select -cl;
+	// and parent to the BND joint chain
+	if($numEndBND>0)
+	{
+		parent $BNDNextJoint[0] $name;
+		connectAttr -f ($name+".scale") ($BNDNextJoint[0]+".inverseScale");
+	}
+	
+	// and than we connect all the other joints DRV->BND
+	for($jnt in $allJoints)
+	{
+		string $listConnection[] = `listConnections -source on -destination off ($jnt+"_BND_JNT.translateY")`;
+		if(size($listConnection)<=0)
+		{
+			connectAttr -f ($jnt+"_DRV_JNT.translateY") ($jnt+"_BND_JNT.translateY");
+		}
+	}
+}
+
+//----------------------------------------------------------------//
+// procedure to check if we have a both IK and FK, so show the control or not
+//----------------------------------------------------------------//
+global proc jer_BuildArm_Check(	string $IDJnts_Top_TXF, string $IDJnts_End_TXF, string $limbType_RAD,
+												string $ControlKey_TXF, string $IKControl_TXF, string $parmB_Elbow_CHK,
+												string $IKElbowControl_TXF, string $IKstretch_CHK, string $volume_CHK,
+												string $twist_top_IFG, string $twist_end_IFG,
+												string $parmB_FKControls_TXF, string $parmB_ctrlSuf_TXF)
+{
+	// get values
+	string $TopJoint = `textField -query -text $IDJnts_Top_TXF`;
+	string $EndJoint = `textField -query -text $IDJnts_End_TXF`;
+	int $limbType = `radioButtonGrp -query -select $limbType_RAD`;
+	string $ControlKey = `textField -query -text $ControlKey_TXF`;
+	string $IKControl = `textField -query -text $IKControl_TXF`;
+	int $elbow = `checkBox -query -value $parmB_Elbow_CHK`;
+	string $IKElbowControl = `textField -query -text $IKElbowControl_TXF`;
+	int $IKstretch = `checkBox -query -value $IKstretch_CHK`;
+	int $volume = `checkBox -query -value $volume_CHK`;
+	int $numTopBND = `intFieldGrp -query -value1 $twist_top_IFG`;
+	int $numEndBND = `intFieldGrp -query -value1 $twist_end_IFG`;
+	string $FKControls = `textField -query -text $parmB_FKControls_TXF`;
+	string $controlSuf = `textField -query -text $parmB_ctrlSuf_TXF`;
+	
+	// check for bad entries
+	string $errorMessage;
+	if($TopJoint == "<shoulder/hip>")
+	{
+		$errorMessage += "You did not specified the top joint.\n";
+	}
+	if($EndJoint == "<wrist/ankle>")
+	{
+		$errorMessage += "You did not specified the end joint.\n";
+	}
+	if($controlSuf == "")
+	{
+		$errorMessage += "You did not specified the control suffix.\n";
+	}
+	if(($limbType == 3 && $ControlKey == "<general control>") || ($volume == 1 && $ControlKey == "<general control>"))
+	{
+		$errorMessage += "You did not specified the general control.\n";
+	}
+	if(($limbType == 1 && $FKControls == "<FK control shape>") || ($limbType == 3 && $FKControls == "<FK control shape>"))
+	{
+		$errorMessage += "You did not specified the control (shape) for the FK.\n";
+	}
+	if(($limbType == 2 && $IKControl == "<IK Control>") || ($limbType == 3 && $IKControl == "<IK Control>"))
+	{
+		$errorMessage += "You did not specified the control for the IK.\n";
+	}
+	if($elbow && $IKElbowControl == "<IK Elbow Control>")
+	{
+		$errorMessage += "You did not specified the control for the IK Elbow.\n";
+	}
+	
+	// check if the joints are on the same chain
+	string $realLastJoint[] = `listRelatives -c $EndJoint`;
+	if(size($realLastJoint) <= 0)
+	{
+		$errorMessage += "The joint selected for the IK has no child.\n";
+	}
+	else if(`nodeType $realLastJoint[0]` != "joint")
+	{
+		$errorMessage += "The child of the joint selected for the IK is not a joint.\n";
+	}
+	string $allJoints[] = gen_GetJointChain($TopJoint, $realLastJoint[0]);
+	$iNumJoints = `size $allJoints`;
+	if($iNumJoints == 0)
+	{
+		$errorMessage += "The selected joints are not connected.\n";
+	}
+	
+	if (size($errorMessage) > 0)
+	{
+		confirmDialog -title "Error" -message $errorMessage -button "Ok";
+		return;
+	}
+	
+	// build the arm
+	jer_BuildArm($allJoints, $TopJoint, $EndJoint, $limbType, $ControlKey, $IKControl, $IKstretch, $volume, $elbow, $IKElbowControl, $numTopBND, $numEndBND, $FKControls, $controlSuf);
+}
+
+//----------------------------------------------------------------//
+// procedure to set on or off the control
+//----------------------------------------------------------------//
+global proc jer_OnOff(int $OnOff, string $control)
+{
+	// show or not
+ 	control -edit -visible $OnOff $control;
+}
+
+//----------------------------------------------------------------//
+// procedure to set on or off some controls that we need for FK
+//----------------------------------------------------------------//
+global proc jer_OnOffFK(int $OnOff)
+{
+	// show or not
+ 	jer_OnOff $OnOff parmB_FKControls_TXF;
+ 	jer_OnOff $OnOff parmB_FKControls_BTN;
+}
+
+//----------------------------------------------------------------//
+// procedure to set on or off some controls that we need for IK
+//----------------------------------------------------------------//
+global proc jer_OnOffIK(int $OnOff)
+{
+	// show or not
+	// ik control
+ 	jer_OnOff $OnOff parmB_IKControl_TXF;
+ 	jer_OnOff $OnOff parmB_IKControl_BTN;
+ 	// stretch
+ 	jer_OnOff $OnOff parmB_IKstretch_CHK;
+ 	checkBox -edit -value $OnOff parmB_IKstretch_CHK;
+ 	// elbow
+ 	jer_OnOff $OnOff parmB_Elbow_CHK;
+ 	checkBox -edit -value $OnOff parmB_Elbow_CHK;
+ 	jer_OnOff $OnOff parmB_IKElbowControl_TXF;
+ 	jer_OnOff $OnOff parmB_IKElbowControl_BTN;
+}
+
+//----------------------------------------------------------------//
+// procedure to set on or off the big control that we need for IK_FK
+//----------------------------------------------------------------//
+global proc jer_OnOffIKFK()
+{
+	// big control if there volume or Both IK_FK
+	int $volume = `checkBox -query -value parmB_volume_CHK`;
+	int $limbType = `radioButtonGrp -query -select parmB_limbType_RAD`;
+	if($volume == 1 || $limbType == 3)
+	{
+		jer_OnOff 1 parmB_ControlKey_TXF;
+ 		jer_OnOff 1 parmB_ControlKey_BTN;
+	}
+	else
+	{
+		jer_OnOff 0 parmB_ControlKey_TXF;
+ 		jer_OnOff 0 parmB_ControlKey_BTN;
+	}
+}
+
+//----------------------------------------------------------------//
+// Query Control
+//----------------------------------------------------------------//
+global proc jer_SelectTransform_CMD(string $Transform_TXF)
+{
+	string $pieces[];
+	string $suffix;
+	string $sel[] = `ls -sl`;
+
+	if ((size($sel) != 1) || `nodeType $sel[0]` != "transform")
+	{
+		string $message = "You must select a transform object.";
+		if((size($sel) > 1)) $message += "\nToo many object has been selected.";
+		else if((size($sel) <= 0)) $message += "\nNo object has been selected.";
+		else $message += "\nThe selected object is not a transform.";
+		confirmDialog -title "Error" -message $message -button "Ok";
+		return;
+	}
+	textField -edit -text $sel[0] $Transform_TXF;
+}
+
+//----------------------------------------------------------------//
+// Query Joint
+//----------------------------------------------------------------//
+global proc jer_SelectJoint_CMD(string $Joint_TXF)
+{
+	string $pieces[];
+	string $suffix;
+	string $sel[] = `ls -sl`;
+
+	if ((size($sel) != 1) || `nodeType $sel[0]` != "joint")
+	{
+		string $message = "You must select the top joint.";
+		if((size($sel) > 1)) $message += "\nToo many object has been selected.";
+		else if((size($sel) <= 0)) $message += "\nNo object has been selected.";
+		else $message += "\nThe selected object is not a joint.";
+		confirmDialog -title "Error" -message $message -button "Ok";
+		return;
+	}
+	textField -edit -text $sel[0] $Joint_TXF;
+}
+
+//----------------------------------------------------------------//
+//	procedure to start the window
+//----------------------------------------------------------------//
+global proc jer_armBuilder()
+{
+	// window
+	if (`window -exists "jer_armBuilderWIN"`) deleteUI -window "jer_armBuilderWIN";
+	window -title "Piñata Arm Builder" -widthHeight 300 580 jer_armBuilderWIN;
+   
+   //------------------------------------------------------------
+   formLayout -numberOfDivisions 100 parmB_form;
+	
+	// TITLE
+	text -label "Let\'s make an arm, shall we?" -align "center" -font "fixedWidthFont" parmB_title;
+	separator -height 10 -style "out" parmB_SEP;
+	//--------------------------
+	
+	// ID JOINTS
+	text -label "Identify Limb Components." -align "left" -h 13 parmB_IDJnts_TXT; // 13 magic height
+	
+	// top
+	textField -editable off -text "<shoulder/hip>" parmB_IDJnts_Top_TXF;
+	button -align "left" -label "Top Joint   *update*" -h 22
+		-c ("jer_SelectJoint_CMD parmB_IDJnts_Top_TXF") parmB_IDJnts_Top_BTN;
+	// end
+	textField -editable off -text "<wrist/ankle>" parmB_IDJnts_End_TXF;
+	button -align "left" -label "End Joint   *update*" -h 22
+		-c ("jer_SelectJoint_CMD parmB_IDJnts_End_TXF") parmB_IDJnts_End_BTN;
+	// Control Suffix
+	text -label "Control Suffix : " -align "left" -h 22 parmB_ctrlSuf_TXT;
+	textField -text "c" parmB_ctrlSuf_TXF;
+	separator -height 10 -style "out" parmB_IDJnts_SEP;
+   //--------------------------
+	
+	// Limb Type - Ik, Fk Or Both
+ 	radioButtonGrp -numberOfRadioButtons 3 -columnWidth4 90 60 60 60
+ 		-adjustableColumn 1 -columnAlign 1 left -label "Limb Type"
+ 		-labelArray3 "FK" "IK" "Both" -select 3
+ 		-onCommand1 ("jer_OnOffFK 1; jer_OnOffIK 0")
+ 		-onCommand2 ("jer_OnOffIK 1; jer_OnOffFK 0")
+ 		-onCommand3 ("jer_OnOffFK 1; jer_OnOffIK 1; jer_OnOffIKFK")
+ 		-offCommand3 ("jer_OnOffIKFK")
+ 		parmB_limbType_RAD;
+	// control to select FK/IK
+ 	textField -editable off -text "<general control>" parmB_ControlKey_TXF;
+	button -align "left" -label "General control   *update*" -h 22
+		-c ("jer_SelectTransform_CMD parmB_ControlKey_TXF") parmB_ControlKey_BTN;
+	// FK shape control
+	textField -editable false -text "<FK control shape>" parmB_FKControls_TXF;
+	button -align "left" -h 22 -label "FK Control   *update*" -command ("jer_SelectTransform_CMD parmB_FKControls_TXF") parmB_FKControls_BTN;
+	// IK control
+	textField -editable off -text "<IK Control>" parmB_IKControl_TXF;
+	button -align "left" -label "IK Control   *update*" -h 22
+		-c ("jer_SelectTransform_CMD parmB_IKControl_TXF") parmB_IKControl_BTN;
+	// IK Elbow
+	checkBox -value on -label "Elbow" -align "left"
+		-onCommand ("jer_OnOff 1 parmB_IKElbowControl_TXF;jer_OnOff 1 parmB_IKElbowControl_BTN")
+		-offCommand ("jer_OnOff 0 parmB_IKElbowControl_TXF;jer_OnOff 0 parmB_IKElbowControl_BTN ") parmB_Elbow_CHK;
+	textField -editable off -text "<IK Elbow Control>" parmB_IKElbowControl_TXF;
+	button -align "left" -label "IK Elbow Control   *update*" -h 22
+		-c ("jer_SelectTransform_CMD parmB_IKElbowControl_TXF") parmB_IKElbowControl_BTN;
+	separator -height 10 -style "out" parmB_ctrlSuf_SEP;
+	//--------------------------
+	
+	// Fency Features
+	text -label "Fancy Features" -align "left" -font "fixedWidthFont" parmB_FancyFeatures_TITLE;
+	// IK_FK
+	text -label "Both" -align "left" parmB_FancyFeaturesBoth_TXT;
+	// volume
+	checkBox -value on -visible on -label "Volume" -align "left" -changeCommand "jer_OnOffIKFK" parmB_volume_CHK;
+	// Twist
+	text -label "Twisty: " -align "left" parmB_Twisty_TXT;
+	intFieldGrp -numberOfFields 1 -visible on -columnWidth2 30 30 -label "Top" -value1 0 parmB_twist_top_IFG;
+	intFieldGrp -numberOfFields 1 -visible on -columnWidth2 30 30 -label "End" -value1 0 parmB_twist_end_IFG;
+	// IK
+	text -label "IK" -align "left" parmB_FancyFeaturesIK_TXT;
+	checkBox -value on -label "IK Stretchy" -align "left" parmB_IKstretch_CHK;
+	separator -height 10 -style "out" parmB_IKstretch_SEP;
+	
+	// - BUILD CONTROLS ------------------------
+	separator -height 10 -style "out" parmB_FancyFeatures_SEP;
+	button -label "Build Controls..."
+		-c ("jer_BuildArm_Check parmB_IDJnts_Top_TXF parmB_IDJnts_End_TXF parmB_limbType_RAD "+
+				"parmB_ControlKey_TXF parmB_IKControl_TXF parmB_Elbow_CHK parmB_IKElbowControl_TXF "+
+				"parmB_IKstretch_CHK parmB_volume_CHK parmB_twist_top_IFG parmB_twist_end_IFG "+
+				"parmB_FKControls_TXF parmB_ctrlSuf_TXF") parmB_GO_BTN; // COMMAND
+	
+	// ORGANIZE CONTROLS
+	formLayout -edit
+		// TITLE
+		-attachForm					parmB_title     "top"		5
+		-attachForm					parmB_title     "left"		5
+		-attachNone					parmB_title     "bottom"	
+		-attachForm					parmB_title     "right"		5
+		
+		-attachControl				parmB_SEP     "top" 			5	parmB_title
+		-attachForm					parmB_SEP     "left"			5
+		-attachNone					parmB_SEP     "bottom"
+		-attachForm					parmB_SEP     "right"		5
+		
+		// ID JOINTS
+		-attachControl				parmB_IDJnts_TXT     "top"			5	parmB_SEP
+		-attachForm					parmB_IDJnts_TXT     "left"		5
+		-attachNone					parmB_IDJnts_TXT     "bottom"
+		-attachNone					parmB_IDJnts_TXT     "right"
+				
+		-attachControl				parmB_IDJnts_Top_BTN     "top"		5	parmB_IDJnts_TXT
+		-attachForm					parmB_IDJnts_Top_BTN     "left"		5
+		-attachNone					parmB_IDJnts_Top_BTN     "bottom"
+		-attachPosition			parmB_IDJnts_Top_BTN     "right"		0 50
+
+		-attachOppositeControl	parmB_IDJnts_Top_TXF     "top"		0	parmB_IDJnts_Top_BTN
+		-attachControl				parmB_IDJnts_Top_TXF     "left"		0	parmB_IDJnts_Top_BTN
+		-attachOppositeControl	parmB_IDJnts_Top_TXF     "bottom"	0	parmB_IDJnts_Top_BTN
+		-attachForm					parmB_IDJnts_Top_TXF     "right"		5
+	
+		-attachControl				parmB_IDJnts_End_BTN     "top"		5	parmB_IDJnts_Top_TXF
+		-attachForm					parmB_IDJnts_End_BTN     "left"		5
+		-attachNone					parmB_IDJnts_End_BTN     "bottom"
+		-attachPosition			parmB_IDJnts_End_BTN     "right"		0 50
+		
+		-attachOppositeControl	parmB_IDJnts_End_TXF     "top"		0	parmB_IDJnts_End_BTN
+		-attachControl				parmB_IDJnts_End_TXF     "left"		0	parmB_IDJnts_End_BTN
+		-attachOppositeControl	parmB_IDJnts_End_TXF     "bottom"	0	parmB_IDJnts_End_BTN
+		-attachForm					parmB_IDJnts_End_TXF     "right"		5
+		
+		// CONTROL SUFFIX
+		-attachControl				parmB_ctrlSuf_TXT     "top"		5	parmB_IDJnts_End_TXF
+		-attachForm					parmB_ctrlSuf_TXT     "left"		5
+		-attachNone					parmB_ctrlSuf_TXT     "bottom"
+		-attachNone					parmB_ctrlSuf_TXT     "right"
+	   
+		-attachControl				parmB_ctrlSuf_TXF     "top"		5	parmB_IDJnts_End_TXF
+		-attachControl				parmB_ctrlSuf_TXF     "left"		5	parmB_ctrlSuf_TXT
+		-attachNone					parmB_ctrlSuf_TXF     "bottom"
+		-attachNone					parmB_ctrlSuf_TXF     "right"
+		
+		-attachControl				parmB_IDJnts_SEP     "top" 		5	parmB_ctrlSuf_TXF
+		-attachForm					parmB_IDJnts_SEP     "left"		5
+		-attachNone					parmB_IDJnts_SEP     "bottom"
+		-attachForm					parmB_IDJnts_SEP     "right"		5
+
+		// LIMB TYPE
+		-attachControl				parmB_limbType_RAD     "top" 		5	parmB_IDJnts_SEP
+		-attachForm					parmB_limbType_RAD     "left"		5
+		-attachNone					parmB_limbType_RAD     "bottom"
+		-attachForm					parmB_limbType_RAD     "right"		5
+
+		// IK-FK control
+		-attachControl				parmB_ControlKey_BTN     "top"		5	parmB_limbType_RAD
+		-attachForm					parmB_ControlKey_BTN     "left"		5
+		-attachNone					parmB_ControlKey_BTN     "bottom"
+		-attachPosition			parmB_ControlKey_BTN     "right"		0 50
+		
+		-attachOppositeControl	parmB_ControlKey_TXF     "top"		0	parmB_ControlKey_BTN
+		-attachControl				parmB_ControlKey_TXF     "left"		0	parmB_ControlKey_BTN
+		-attachOppositeControl	parmB_ControlKey_TXF     "bottom"	0	parmB_ControlKey_BTN
+		-attachForm					parmB_ControlKey_TXF     "right"		5
+
+		// FK shape control
+		-attachControl				parmB_FKControls_BTN     "top" 		5	parmB_ControlKey_TXF
+		-attachForm					parmB_FKControls_BTN     "left"		5
+		-attachNone					parmB_FKControls_BTN     "bottom"
+		-attachPosition			parmB_FKControls_BTN     "right"		0 50
+
+		-attachControl				parmB_FKControls_TXF     "top"		5	parmB_ControlKey_TXF
+		-attachControl				parmB_FKControls_TXF     "left"		0	parmB_FKControls_BTN
+		-attachNone					parmB_FKControls_TXF     "bottom"
+		-attachForm					parmB_FKControls_TXF     "right"		5
+		
+		// IK Control
+		-attachControl				parmB_IKControl_BTN     "top"			5	parmB_FKControls_TXF
+		-attachForm					parmB_IKControl_BTN     "left"		5
+		-attachNone					parmB_IKControl_BTN     "bottom"
+		-attachPosition			parmB_IKControl_BTN     "right"		0 50
+		
+		-attachOppositeControl	parmB_IKControl_TXF     "top"		0	parmB_IKControl_BTN
+		-attachControl				parmB_IKControl_TXF     "left"	0	parmB_IKControl_BTN
+		-attachOppositeControl	parmB_IKControl_TXF     "bottom"	0	parmB_IKControl_BTN
+		-attachForm					parmB_IKControl_TXF     "right"	5
+
+		// Elbow
+		-attachControl				parmB_Elbow_CHK     "top" 		5	parmB_IKControl_TXF
+		-attachForm					parmB_Elbow_CHK     "left"		5
+		-attachNone					parmB_Elbow_CHK     "bottom"
+		-attachNone					parmB_Elbow_CHK     "right"
+
+		-attachControl				parmB_IKElbowControl_BTN     "top" 		5	parmB_Elbow_CHK
+		-attachForm					parmB_IKElbowControl_BTN     "left"		5
+		-attachNone					parmB_IKElbowControl_BTN     "bottom"
+		-attachPosition			parmB_IKElbowControl_BTN     "right"		0 50
+		
+		-attachControl				parmB_IKElbowControl_TXF     "top" 		5	parmB_Elbow_CHK
+		-attachControl				parmB_IKElbowControl_TXF     "left"		0	parmB_IKElbowControl_BTN
+		-attachNone					parmB_IKElbowControl_TXF     "bottom"
+		-attachForm					parmB_IKElbowControl_TXF     "right"	5
+	
+		-attachControl				parmB_ctrlSuf_SEP     "top" 		5	parmB_IKElbowControl_TXF
+		-attachForm					parmB_ctrlSuf_SEP     "left"		5
+		-attachNone					parmB_ctrlSuf_SEP     "bottom"
+		-attachForm					parmB_ctrlSuf_SEP     "right"		5
+		
+		// Fency Features
+		-attachControl				parmB_FancyFeatures_TITLE     "top" 		5	parmB_ctrlSuf_SEP
+		-attachForm					parmB_FancyFeatures_TITLE     "left"		5
+		-attachNone					parmB_FancyFeatures_TITLE     "bottom"
+		-attachForm					parmB_FancyFeatures_TITLE     "right"		5
+		
+		// both
+		-attachControl				parmB_FancyFeaturesBoth_TXT     "top" 		5	parmB_FancyFeatures_TITLE
+		-attachForm					parmB_FancyFeaturesBoth_TXT     "left"		5
+		-attachNone					parmB_FancyFeaturesBoth_TXT     "bottom"
+		-attachNone					parmB_FancyFeaturesBoth_TXT     "right"
+		
+		// volume
+		-attachControl				parmB_volume_CHK     "top" 		5	parmB_FancyFeaturesBoth_TXT
+		-attachForm					parmB_volume_CHK     "left"		5
+		-attachNone					parmB_volume_CHK     "bottom"
+		-attachNone					parmB_volume_CHK     "right"
+		
+		// twist
+		-attachControl				parmB_Twisty_TXT     "top" 		5	parmB_volume_CHK
+		-attachForm					parmB_Twisty_TXT     "left"		5
+		-attachNone					parmB_Twisty_TXT     "bottom"
+		-attachNone					parmB_Twisty_TXT     "right"
+		
+		-attachOppositeControl	parmB_twist_top_IFG     "top" 		0	parmB_Twisty_TXT
+		-attachControl				parmB_twist_top_IFG     "left"		5	parmB_Twisty_TXT
+		-attachNone					parmB_twist_top_IFG     "bottom"
+		-attachNone					parmB_twist_top_IFG     "right"
+		
+		-attachOppositeControl	parmB_twist_end_IFG     "top" 		0	parmB_twist_top_IFG
+		-attachControl				parmB_twist_end_IFG     "left"		5	parmB_twist_top_IFG
+		-attachNone					parmB_twist_end_IFG     "bottom"
+		-attachNone					parmB_twist_end_IFG     "right"
+		
+		// IK
+		-attachControl				parmB_FancyFeaturesIK_TXT     "top" 		5	parmB_twist_end_IFG
+		-attachForm					parmB_FancyFeaturesIK_TXT     "left"		5
+		-attachNone					parmB_FancyFeaturesIK_TXT     "bottom"
+		-attachNone					parmB_FancyFeaturesIK_TXT     "right"
+		
+		// IK Stretch
+		-attachControl				parmB_IKstretch_CHK     "top" 		5	parmB_FancyFeaturesIK_TXT
+		-attachForm					parmB_IKstretch_CHK     "left"		5
+		-attachNone					parmB_IKstretch_CHK     "bottom"
+		-attachNone					parmB_IKstretch_CHK     "right"
+		
+		-attachControl				parmB_IKstretch_SEP     "top" 		5	parmB_IKstretch_CHK
+		-attachForm					parmB_IKstretch_SEP     "left"		5
+		-attachNone					parmB_IKstretch_SEP     "bottom"
+		-attachForm					parmB_IKstretch_SEP     "right"		5
+		
+		// BUILD CONTROLS
+		-attachControl				parmB_FancyFeatures_SEP    "top" 		5	parmB_IKstretch_SEP
+		-attachForm					parmB_FancyFeatures_SEP    "left"		5
+		-attachNone					parmB_FancyFeatures_SEP    "bottom"
+		-attachForm					parmB_FancyFeatures_SEP    "right"		5
+		
+		-attachControl				parmB_GO_BTN     "top" 		5	parmB_FancyFeatures_SEP
+		-attachForm					parmB_GO_BTN     "left"		5
+		-attachPosition			parmB_GO_BTN     "bottom"	5	100
+		-attachForm					parmB_GO_BTN     "right"	5
+
+	parmB_form;
+
+	showWindow jer_armBuilderWIN;
+	
+}// END proc jer_XtremeLimberizor
+// ---------------------------------------------------------------------------

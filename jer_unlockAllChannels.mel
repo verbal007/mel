@@ -1,0 +1,19 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+ jer_unlockAllChannels
+ Created by: Jeremy Sabo on Oct 4, 2008
+ Desc:	unlocks and unhides all locked channels
+//////////////////////////////////////////////////////////////////////////////
+*/
+global proc jer_unlockAllChannels(){
+string $locked[];
+string $attr;
+string $sel[] = `ls -sl`;
+for ($each in $sel){
+    $locked = `listAttr -l $each`;
+	for ($attr in $locked){
+    	setAttr -lock false -keyable true ($each+"."+$attr);
+	}
+}
+
+} // END //

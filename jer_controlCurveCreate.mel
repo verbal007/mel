@@ -1,0 +1,50 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+ jer_controlCurveCreate
+ Created by: Jeremy Sabo on Oct 30, 2008
+ Desc: Select objects to match new control curves up to and run jer_controlCurveCreate.
+
+Requires: 	jer_groupToZero.mel
+    		jer_hierConnect
+			jer_transConnect.mel
+
+//////////////////////////////////////////////////////////////////////////////
+*/
+
+global proc jer_controlCurveCreate(){
+string $name;
+
+string $each;
+string $sel[] = `ls -sl`;
+
+
+if (`size $sel` < 1){
+	error "Please select mocap joint, that has an associated base joint.";
+}
+
+for ($each in $sel){
+    // create name for new control
+	$name = `substitute "mc_" $each ""`;
+
+    // create cube control curve
+    string $curve = `curve -n ($name+"_c") -d 1 -p 0.5 0.5 0.5 -p 0.5 0.5 -0.5 -p 0.5 -0.5 -0.5 -p 0.5 -0.5 0.5 -p 0.5 0.5 0.5 -p -0.5 0.5 0.5 -p -0.5 0.5 -0.5 -p -0.5 -0.5 -0.5 -p -0.5 -0.5 0.5 -p -0.5 0.5 0.5 -p -0.5 0.5 -0.5 -p 0.5 0.5 -0.5 -p 0.5 -0.5 -0.5 -p -0.5 -0.5 -0.5 -p -0.5 -0.5 0.5 -p 0.5 -0.5 0.5 -k 0 -k 1 -k 2 -k 3 -k 4 -k 5 -k 6 -k 7 -k 8 -k 9 -k 10 -k 11 -k 12 -k 13 -k 14 -k 15`;
+    scale -r -p 0cm 0cm 0cm .7 4 .7 ($curve+".cv[0:15]");
+    
+    // store the positions of the selected joints
+    $pos = `xform -q -rp -ws $each`;
+    $rot = `xform -q -ro -ws $each`;
+
+    // apply positions to curve
+    xform -ws -t $pos[0] $pos[1] $pos[2] $curve;
+	xform -ws -ro $rot[0] $rot[1] $rot[2] $curve;
+
+} // END // for ($each in $sel){
+
+
+// snap control curve to fk control
+
+
+
+
+
+} // END // global proc jer_controlCurveCreate

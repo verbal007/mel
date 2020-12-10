@@ -1,0 +1,21 @@
+// Match Position Script v 1.0
+// 11-17-2003 _ 8:00pm _ by Jeremy Sabo
+/////////////////
+// Match another object's position by point and orient constraining to master.
+// Select master and then select secondary object that is to be constrained, run script
+/////////////////
+
+global proc jer_snapPos()
+{
+string $matchObjs[] = `ls -sl`;
+string $master = $matchObjs[0];
+string $slave = $matchObjs[1];
+if (size($matchObjs) == 2)
+{
+   string $pConst[] = `pointConstraint -offset 0 0 0 -weight 1 $master $slave`;
+   string $oConst[] =  `orientConstraint -weight 1 $master $slave`;
+   string $delRslt = `delete $pConst[0] $oConst[0]`;
+} else {
+print "Please select the master then slave, then run script.  No more.  No less.";
+}
+}

@@ -1,0 +1,56 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+ jer_transConnect
+ Created by: Jeremy Sabo on May 07, 2007
+ Desc:	Connects all translation attributes of 1st selection to 2nd selection
+ 	& locks driven attributes + vis
+
+//////////////////////////////////////////////////////////////////////////////
+*/
+
+///////////////////////////////////////////
+// ~ MAIN ~ PROC
+global proc jer_transConnect(){
+
+string $sel[] = `ls -sl`;
+string $master;
+string $slave;
+string $each;
+float $selCount = size($sel);
+if ($selCount >= 2){
+	$master = $sel[0];
+	for ($count = 1; $count < $selCount; $count ++){
+
+		$slave = $sel[$count];
+
+		connectAttr -f ($master+".translate") ($slave+".translate");
+		connectAttr -f ($master+".rotate") ($slave+".rotate");
+		connectAttr -f ($master+".scale") ($slave+".scale");
+
+		setAttr -l on ($slave+".tx");
+		setAttr -l on ($slave+".ty");
+		setAttr -l on ($slave+".tz");
+
+		setAttr -l on ($slave+".rx");
+		setAttr -l on ($slave+".ry");
+		setAttr -l on ($slave+".rz");
+
+		setAttr -l on ($slave+".sx");
+		setAttr -l on ($slave+".sy");
+		setAttr -l on ($slave+".sz");
+		
+		setAttr -l on ($slave+".v");
+	}
+
+
+} else {
+	error "Must select one Master and one or more slaves.";
+}
+
+} // END PROC jer_transConnect
+
+/* BONUS //
+// Testing
+source "/corp/home/jsabo/Desktop/jer_transConnect.mel";
+jer_transConnect;
+*/

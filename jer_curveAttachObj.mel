@@ -1,0 +1,64 @@
+///////////////////////////////////////////////////////////////////////////
+/* jer_curveAttachObj
+
+Created by Jeremy Sabo on June 11, 2008
+
+Requirements:  jer_curveClosestPoint.mel
+
+Desc:	Attach object to closest point on curve
+
+Usage:  Select curve and shift+select object(s) to attach to closest points
+on curve.  Run script w/ offset value as parameter
+i.e.     jer_curveAttachObj 0.0036
+
+*/ 
+///////////////////////////////////////////////////////////////////////////
+
+global proc string[] jer_curveAttachObj(){
+
+string $sel[] = `ls -sl`;
+int $count;
+string $crv = $sel[0];
+
+string $obj;
+float $inPos[];
+float $param;
+string $null;
+string $poc = "curveAttachObj_POC";
+string $upObj = "locator1";
+string $pocArray[];
+
+if (`size $sel` < 2){
+	error "Please select somethin \n";
+}
+
+for ($count =1;$count < `size $sel`;$count++){
+	$obj = $sel[$count];
+	$inPos = `xform -q -ws -rp $obj`;
+	// attach to closest curve parameter
+	$param = `closestPointOnCurve -inPosition $inPos[0] $inPos[1] $inPos[2] -q -paramU $crv`;
+	$poc = `createNode pointOnCurveInfo -n $poc`;
+	$pocArray[`size($pocArray)`] = $poc;
+	connectAttr -f ($crv+".worldSpace[0]") ($poc+".inputCurve");
+	connectAttr -f ($poc+".position") ($obj+".translate");
+	setAttr ($poc+".parameter") $param;
+	setAttr ($poc+".turnOnPercentage") 1;  // funkyResults w/ deforming shapes
+
+
+	/*
+	// create offset object to be aimed at
+	$null = `group -em -n ("curveAttach_"+$obj+"_aimNull")`;
+	$poc = `createNode pointOnCurveInfo -n $poc`;
+	connectAttr -f ($crv+".worldSpace[0]") ($poc+".inputCurve");
+	connectAttr -f ($poc+".position") ($null+".translate");
+	setAttr ($poc+".parameter") ($param + $offset);
+	setAttr ($poc+".turnOnPercentage") 1;
+	
+	//aim at offset	object
+	aimConstraint -offset 0 0 0 -weight 1 -aimVector 1 0 0 -upVector 0 1 0 -worldUpType "object" -worldUpObject $upObj $null $obj ;
+	*/
+	
+} // END // for ($count =1;$count < `size $sel`;$count++){
+    
+return $pocArray;
+} // END // global proc float jer_curveAttachObj(){

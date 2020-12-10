@@ -1,0 +1,57 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+// jer_crowdShapeImages
+
+Created by Jeremy Sabo on Jun 22, 2006
+
+Desc:  Select textured shape.  Run script including the number of frames in cycle.
+	i.e.   jer_crowdShapeImages 48;    Where "48 is the total number of images.
+
+Assume: First shape has a numerical prefix of "1", i.e.  "CHORTLES_GRID_1".
+	Shape is textured with the first of many images in an animation cycle that
+	is the size indicated by the procedure option.
+	
+//////////////////////////////////////////////////////////////////////////////
+*/
+
+global proc jer_crowdShapeImages (int $cycleCount){
+	// ** for testing ** int $cycleCount = 48;
+	
+	string $sel[];
+	string $baseShapes[];
+	string $baseSGs[];
+	
+	string $newPlanes[];
+	string $newSGs[];
+	string $newMaterials[];
+	string $newFiles[];
+	
+	int $count = 2;
+	$cycleCount = ($cycleCount + 1);
+	
+	
+	$sel = `ls -sl`;
+	
+	if (`size($sel)`<1){
+		error "First select the transform to be duplicated";
+	}
+	
+	$baseShapes = `listRelatives -s $sel[0]`;
+	$baseSGs = `listConnections ($baseShapes[0]+".instObjGroups[0]")`;
+	
+	for ($count = 1; $count < $cycleCount; $count++){
+		$newPlanes[0] = `match "^.*[^0-9]" $sel[0]`;
+		$newPlanes = `duplicate -n ($newPlanes[0]+$count) $sel[0]`;
+		
+		$newSGs[0] = `match "^.*[^0-9]" $baseSGs[0]`;
+		$newSGs = `duplicate -n ($newSGs[0]+$count) -renameChildren -un $baseSGs[0]`;
+		// $newSGs = `duplicate -n ((`match "^.*[^0-9]" $baseSGs[0]`)+$count) -renameChildren -un $baseSGs[0]`;
+		$newMaterials = `listConnections ($newSGs[0]+".surfaceShader")`;
+		$newFiles = `listConnections ($newMaterials[0]+".transparency")`;
+		//print ("New SG ="+$newSGs[0];
+		setAttr ($newFiles[0]+".frameExtension") $count;
+		print $newPlanes[0];
+		sets -e -forceElement $newSGs[0] $newPlanes[0];
+	}
+
+}// END proc

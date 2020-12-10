@@ -1,0 +1,57 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+// jer_forgeCtrl
+
+Created by Jeremy Sabo on Nov 2, 2005
+
+Desc:	Select multiple curve transforms and run script.
+	The first transform selected will become the primary
+
+//////////////////////////////////////////////////////////////////////////////
+*/
+
+global proc jer_forgeCtrl(){
+	int $num;
+	string $sel[] = `ls -sl`;
+	string $adds[];
+	string $addsChildren[];
+	string $shapes[];
+	int $num;
+	int $num2;
+	
+	string $text;
+	string $result = `promptDialog 
+		-title "Rename Object"
+		-message "Enter Name:"
+		-button "OK" -button "Cancel"
+		-defaultButton "OK" -cancelButton "Cancel"
+	 	-dismissString "Cancel"`;
+	 
+	if ($result == "OK") {
+		$text = `promptDialog -query -text`;
+	}
+	
+	$sel[0] = `rename $sel[0] $text`;
+	
+	for ($num = 1; $num < `size($sel)`;$num++){
+		parent $sel[$num] $sel[0];
+		makeIdentity -apply true -t 1 -r 1 -s 1 -n 0 $sel[$num];
+		parent -w $sel[$num];
+		
+		$addsChildren = `listRelatives -ad -c $sel[$num]`;
+	
+		for ($num2 = 0; $num2 < `size($addsChildren)`;$num2++){
+			if ((`nodeType $addsChildren[$num2]`)== "nurbsCurve"){
+				parent -s -r $addsChildren[$num2] $sel[0];
+				// $shapes[`size($shapes)`]=$each;
+				rename $addsChildren[$num2] ($text+$num2+"_shape");
+			}
+		}
+		delete $sel[$num];
+	
+	}
+	
+	select -r $sel[0];
+	
+
+}//END global proc jer_forgeCtrl(){

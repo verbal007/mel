@@ -1,0 +1,178 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+// jer_overrideColor
+
+Created by Jeremy Sabo on Oct 22, 2005
+
+Desc:	Assign a color to all nurbs curves 
+	parented under currently selected transform node.
+	
+Docs:	Select object and run script.  If you want to discard changes, click "Cancel".
+	Otherwise click "OK" to apply color perminantly.  Object will be deselected when application
+	is executed.  Before clicking "Cancel" or "OK" select a new object and script will automatically
+	restart itself on the newly selected object.
+	
+//////////////////////////////////////////////////////////////////////////////
+*/
+
+///////////////////////////////////////////////////////////////////////////////
+// LST Override Color PROC: Gets list of curve shape nodes under current selection.
+proc string[] jer_overrideColor_LST(){
+	string $sel[] = `ls -sl`;
+	string $children[];
+	string $each;
+	string $child;
+	global string $jer_overrideColorList[];
+	clear $jer_overrideColorList;
+	
+	for ($each in $sel){
+		// ** not ALL // $children = `listRelatives -allDescendents $each`;
+		$children = `listRelatives -children -path $each`;
+		for ($child in $children){
+			if (`nodeType $child`=="nurbsCurve" || `nodeType $child`=="mesh"){
+				$jer_overrideColorList[`size($jer_overrideColorList)`] = $child;
+			}
+		}
+	}
+	return $jer_overrideColorList;
+} //END jer_overrideColor_LST
+
+
+///////////////////////////////////////////////////////////////////////////////
+// QUERY Override Color PROC: Query overrideColor attr values for specified shape nodes
+proc int[] jer_overrideColor_QUERY(string $jer_overrideColorList[]){
+	
+	global int $jer_overrideColorValue[];
+	clear $jer_overrideColorValue;
+	string $each;
+	int $num;
+	
+	for ($each in $jer_overrideColorList){
+		$num = `getAttr ($each+".overrideColor")`;
+		$jer_overrideColorValue[`size($jer_overrideColorValue)`] = $num;
+	}
+	return $jer_overrideColorValue;
+
+} //END jer_overrideColor_QUERY
+ 
+
+///////////////////////////////////////////////////////////////////////////////
+// CMD Override Color PROC: Applies color value from slider to listed shaped nodes
+global proc jer_overrideColor_CMD(int $color, string $jer_overrideColorList[]){
+	string $each;
+	for ($each in $jer_overrideColorList){
+		setAttr ($each+".overrideEnabled") 1;
+		// Color number of colorIndexSliderGrp is 1 higher than overrideColor value
+		if ($color == 0){
+			setAttr ($each+".overrideColor") ($color);
+		}else{	
+			setAttr ($each+".overrideColor") ($color-1);
+		}
+		
+	}
+} //END jer_overrideColor_CMD
+
+
+///////////////////////////////////////////////////////////////////////////////
+// OK Override Color PROC: Accept current colors and query new selection.
+// If new selection exists, restart UI.
+global proc jer_overrideColor_OK(string $jer_overrideColorList[], int $jer_overrideColorValue[]){
+	// If new object is selected, restart script.
+	string $sel[] = `ls -sl`;
+	if ($sel[0] == ""){
+		print "Color applied.\n";
+		deleteUI jer_overrideColor_WIN;
+	}else{
+		string $child[] = `listRelatives -s $sel[0]`;
+		jer_overrideColor;
+	}
+} //END jer_overrideColor_CANCEL
+
+
+///////////////////////////////////////////////////////////////////////////////
+// CANCEL Override Color PROC: Put override colors back to normal and determine if app is to be restarted.
+global proc jer_overrideColor_CANCEL(string $jer_overrideColorList[], int $jer_overrideColorValue[]){
+	string $each;
+	for ($num = 0; $num < `size($jer_overrideColorList)`;$num++){
+		setAttr ($jer_overrideColorList[$num]+".overrideColor") $jer_overrideColorValue[$num];
+		if ($jer_overrideColorList[$num] == 0){
+			setAttr ($jer_overrideColorList[$num]+".overrideEnabled") 0;
+		}else{
+			setAttr ($jer_overrideColorList[$num]+".overrideEnabled") 1;
+		}
+	}
+	
+	// If new object is selected, restart script.
+	string $sel[] = `ls -sl`;
+	if ($sel[0] == ""){
+		print "Application of color canceled.\n";
+		deleteUI jer_overrideColor_WIN;		
+	}else{
+		string $child[] = `listRelatives -s $sel[0]`;
+		jer_overrideColor;
+	}
+} //END jer_overrideColor_CANCEL
+
+
+///////////////////////////////////////////////////////////////////////////////
+// MAIN Override Color PROC: Loads main UI for 
+global proc jer_overrideColor(){
+	
+	string $jer_overrideColorList[] = `jer_overrideColor_LST`;
+	int $jer_overrideColorValue[] = `jer_overrideColor_QUERY $jer_overrideColorList`;
+	string $sel[] = `ls -sl`;
+	
+	// Clear selection so we can see the colors change realtime
+	if (`size($sel)`>0){
+		select -cl;
+	}else{
+		error "Please make selection";
+	}
+
+	if (`window -exists jer_overrideColor_WIN`){
+		deleteUI jer_overrideColor_WIN;
+	}
+
+	window -title "Jeremy\'s Color Overriderer" -widthHeight 300 200 jer_overrideColor_WIN;
+	
+	// Form Layout
+	string $form =  `formLayout -numberOfDivisions 100`;
+		// Title
+		string $title = `text -label "Pick a color.  Any color." -align "center" -font "fixedWidthFont"`;
+		// Color Picker
+		//string $colorSlider = `colorIndexSliderGrp -label "Select Color" -min 0 -max 31 -value 10 -cc ("jer_overrideColor_CMD "+`colorIndexSliderGrp -q -value $colorSlider`+" "+$jer_overrideColorList);
+		string $colorSlider = `colorIndexSliderGrp -label "Select Color" -min 0 -max 32 -value 0`;
+		string $colorSlider_CMD = ("jer_overrideColor_CMD `colorIndexSliderGrp -q -value "+$colorSlider+"` $jer_overrideColorList");
+		colorIndexSliderGrp -e -dragCommand $colorSlider_CMD $colorSlider;
+		// "OK" Button
+		string $OKButton = `button -label "OK  (next)" -c "jer_overrideColor_OK $jer_overrideColorList $jer_overrideColorValue"`;
+		// "Cancel" Button
+		string $cancelButton = `button -label "Cancel  (next)" -c "jer_overrideColor_CANCEL $jer_overrideColorList $jer_overrideColorValue"`;
+ 
+		formLayout -edit
+			-attachForm					$title     "top"		5
+			-attachForm					$title     "left"		5
+			-attachNone					$title     "bottom"
+			-attachForm					$title     "right"	5
+			
+			-attachControl				$colorSlider     "top"		5	$title
+			-attachForm					$colorSlider     "left"		5
+			-attachNone				$colorSlider     "bottom"
+			-attachNone					$colorSlider     "right"
+			
+			-attachControl				$OKButton     "top"		5	$colorSlider
+			-attachForm					$OKButton     "left"		5
+			-attachPosition				$OKButton     "bottom"	0	95
+			-attachPosition				$OKButton     "right"	0	50
+			
+			-attachControl				$cancelButton     "top"		5	$colorSlider
+			-attachControl				$cancelButton     "left"		5	$OKButton
+			-attachOppositeControl		$cancelButton     "bottom"	0	$OKButton
+			-attachForm					$cancelButton     "right"	5
+		        
+		$form;
+		
+	showWindow jer_overrideColor_WIN;
+	
+} //END jer_overrideColor
+

@@ -1,0 +1,58 @@
+///////////////////////////////////////////////////////////////////////////
+/* jer_smoothAttr
+
+Created by Jeremy Sabo on Dec 9, 2005
+
+Desc:	Select all geometry to be smoothed, then a control curve last.
+		Run script, specifying the smooth attribute name.
+		This attribute will be linked up to the smooth nodes of the selected
+		geo.  Default value is 0, with a max of 2 (divisions).
+		i.e.   jer_smoothAttr "Smooth"
+		This will create a "Smooth" attribute on the last object selected,
+		which controls the smooth divisions on the other objects selected.
+*/ 
+///////////////////////////////////////////////////////////////////////////
+
+global proc jer_smoothAttr(string $attribute){
+	
+	string $sel[] = `ls -sl -long`;
+	int $count;
+	string $meshes[];
+	string $parent[];
+	string $meshAll[];
+	string $parentAll[];
+	string $meshNoDups[];
+	string $smooth[];
+	string $ctrl = $sel[(`size($sel)`)-1];
+
+	// Attribute: Creation
+	if (!`objExists ($ctrl+"."+$attribute)`){
+		print ("Creating attribute"+$ctrl+"."+$attribute+"\n");
+		addAttr -ln $attribute -at long  -min 0 -max 2 -dv 0 $ctrl;
+		setAttr -e -keyable true ($ctrl+"."+$attribute);
+	}
+
+	// Mesh Shapes:  list all Child Shapes
+	for ($count = 0;$count < (`size($sel)`-1);$count++){
+		$meshes = `listRelatives -path -ad -type "mesh" $sel[$count]`;
+		appendStringArray $meshAll $meshes (`size($meshes)`);
+		clear $meshes;
+	}
+	print "Smoothing: \n";
+	print $meshAll;
+	
+	for ($each in $meshAll){
+		$parent = `listRelatives -path -p $each`;
+		$parentAll[`size($parentAll)`] = $parent[0];
+		clear $parent;
+	}
+	print $parentAll;
+	$parentAll = stringArrayRemoveDuplicates($parentAll);
+	
+	// Smooth Node: Create & Connect
+	for ($each in $parentAll){
+		$smooth = `polySmooth -mth 0 -dv 0 -c 1 -kb 1 -ksb 1 -khe 0 -kt 1 -kmb 1 -suv 1 -sl 1 -dpe 1 -ps 0.1 -ro 1 -ch 1 $each`;
+		connectAttr -f ($ctrl+"."+$attribute) ($smooth[0]+".divisions");
+	}
+
+} // END PROC

@@ -1,0 +1,46 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+ jer_hierConnectAttrs
+ Created by: Jeremy Sabo on May 07, 2007
+ Inspired by: Devan Mussato, Teurnis Deraat & Hans
+ Desc:	Connects all translation attributes of 1st selection to 2nd selection
+ 	& locks driven attributes + vis
+
+//////////////////////////////////////////////////////////////////////////////
+*/
+
+///////////////////////////////////////////
+// ~ MAIN ~ PROC
+global proc jer_attrsConnect(){
+
+string $sel[] = `ls -sl`;
+string $master;
+string $slave;
+string $each;
+string $attr;
+float $selCount = size($sel);
+if ($selCount < 2){
+   	error "Must select one Master and one or more slaves.";
+}
+$master = $sel[0];
+
+string $channelSel[] = `channelBox -q -selectedMainAttributes mainChannelBox`;
+if (`size $channelSel` == 0){
+		error "Select a rotate and/or a translate attr in the channel box to apply.";
+}
+
+for ($count = 1; $count < $selCount; $count ++){
+   	$slave = $sel[$count];
+	for ($attr in $channelSel){
+    	connectAttr -f ($master+"."+$attr) ($slave+"."+$attr);
+    	// ** fails on references // setAttr -l on ($slave+"."+$attr);
+	}
+}
+
+} // END PROC jer_transConnect
+
+/* BONUS //
+// Testing
+source "/corp/home/jsabo/Desktop/jer_transConnect.mel";
+jer_transConnect;
+*/

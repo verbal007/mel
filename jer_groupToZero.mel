@@ -1,0 +1,80 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+ jer_groupToZero
+ Created by: Jeremy Sabo on May 07, 2007
+ Inspired by: dm_autoGrp by Devan Mussato
+ Desc: Creates a group around the currently selected object(s).
+ 	Uses the transforms of first selected object in an attempt to zero out the 
+	transforms on the objects.
+
+//////////////////////////////////////////////////////////////////////////////
+*/
+global proc string jer_groupToZero(){
+
+
+string $sel[] = `ls -sl`;
+// no need // string $selPath[] = `ls -l -sl`;
+// no need // $selPath[0] = `substitute "|[a-zA-Z0-9_]*$" $selPath[0] ""`;
+
+/////////////////////////////
+// GROUP NAME //
+// Default Naming
+string $null = ($sel[0]+"Grp");
+// `Escape` Naming
+if (`match "[a-zA-Z0-9]+_[a-zA-Z0-9]+_ctrl$" $sel[0]` != ""){
+	// ** Check Duplicate Naming : Maya returns full path when a object with same name exists
+	$null = `substitute "ctrl$" $sel[0] "null"`;
+	if (`gmatch $sel[0] "*|*"`){
+		warning ("Duplicate naming found with selection:"+$sel[0]);
+		$null = `match "|[a-zA-Z0-9_]*$" $null`;
+	}
+
+}
+
+if (`objectType $sel[0]` == "joint"){
+	// Joint
+	$null = `group -n $null -em -p $sel[0]`;
+	string $parent[] = `listRelatives -parent -fullPath $sel[0]`;
+	if ($parent[0] == ""){
+		parent -w $null;
+	}else{
+		parent $null $parent[0];
+	}
+} else {
+	// Regular Transform
+	string $nullName[] = `duplicate -po -n $null $sel[0]`;
+	$null = $nullName[0];
+}
+
+parent $sel[0] $null;
+
+// Verify object was zeroed
+
+float $translate[] = `getAttr ($sel[0]+".translate")`;
+float $rotate[] = `getAttr ($sel[0]+".rotate")`;
+
+if ($translate[0]+$translate[1]+$translate[2] != 0){
+	warning ("Translation did not zero on "+$sel[0]);
+}else if ($rotate[0]+$rotate[1]+$rotate[2] != 0){
+	warning ("Rotation did not zero on "+$sel[0]);
+}
+
+
+return $null;
+
+
+} // END PROC
+
+/* BONUS //
+// Testing
+source "/corp/home/jsabo/Desktop/jer_groupToZero.mel";
+jer_groupToZero;
+
+// Batch Group
+string $stuff[] = `ls -sl`;
+for ($each in $stuff){
+	select -r $each;
+	jer_groupToZero;
+}
+
+*/

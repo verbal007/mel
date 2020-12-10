@@ -1,0 +1,110 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+jer_propAttach
+
+Created by Jeremy Sabo on Jul 28, 2006
+
+Desc:	Create curve from mesh edge (bonus tools) and group that aligns along edge.
+
+Docs:	Select edges, run script.
+
+Updates:  ** TO ADD!! **  Properly set motionpath UVal on Upvec group.  This will differ
+			depending on number of edges selected.
+
+Requirements:  Maya 7 Bonus Tools
+//////////////////////////////////////////////////////////////////////////////
+*/
+
+global proc jer_propAttach(){
+
+	source bgCreateCurveFromEdges; // Maya 7.0 Bonus Tool
+	
+	string $buffer[];
+
+	// Declarations
+	string $propName;
+	string $propNoPath;
+	string $sel[] = `ls -sl`;
+	int $selCount = `size($sel)`;
+	string $polyTrans = `match "^[^\.]*" $sel[0]`;
+	string $polyShape;
+
+	string $crvTrans;
+	string $crvShape;
+
+	string $mPathSlide; // Motionpath where sliding object sits;
+	string $slideGrp;  // Null that is parented under constrained mPathSlide object
+
+	string $mPathUpVec;  // Motionpath constraining $slideGrp up vector.
+	string $upVecNul;  // Null up vector for $slideGrp
+
+	// Edge or Curve Selected?
+	int $isEdge = 0;
+	if (`gmatch $sel[0] "*\[[1-0]*\]*"`){
+		$isEdge = 1;
+	}
+	print ("Is Edge= "+$isEdge+"\n");
+	// ---------------------------------------------------------------
+	// Name - Prompt user input
+	string $makeNew = `promptDialog -title "Stuff On Skin."
+							-message "Give an accessory name."
+							-text "<WhazDis>"
+							-button "Ok"
+							-button "Cancel"
+							-defaultButton "Ok"
+							-cancelButton "Cancel"
+							-dismissString "Cancel"`;
+
+	if ( $makeNew == "Ok" ){
+		$propName = `promptDialog -query`;
+		if ($propName == "<WhazDis>"){
+			error "Give the accessory a name.";
+		}
+	}
+	// ---------------------------------------------------------------
+
+	if ($isEdge == 1){
+		// Mesh Shape node query
+		clear $buffer; $buffer = `listRelatives -c $polyTrans`;
+		$polyShape = $buffer[0];
+
+		// Maya 7.0 Bonus Tool - Create Curve from Edges
+		createCrv 1 1 1 0 0;
+	}
+
+	// Curve Translate node query
+	clear $buffer; $buffer = `ls -sl -long`;
+	print ("buffer0= "+$buffer[0]+"\n");
+	$crvTrans = $buffer[0];
+
+	if ($isEdge == 0){
+		rebuildCurve -ch 1 -rpo 1 -rt 0 -end 1 -kr 0 -kcp 0 -kep 1 -kt 0 -s 0 -d 3 $crvTrans;
+	}
+
+	// Curve Shape node query
+	clear $buffer; $buffer = `listRelatives -path -c $crvTrans`;
+	$crvShape = $buffer[0];
+
+	// MotionPath + Slide Group creation
+	$mPathSlide = `createNode motionPath`;
+	$slideGrp = `group -em -n ($propName+"_slideGrp")`;
+	connectAttr ($crvShape+".worldSpace[0]") ($mPathSlide+".geometryPath");
+	connectAttr ($mPathSlide+".rotateOrder") ($slideGrp+".rotateOrder") ;
+	connectAttr ($mPathSlide+".allCoordinates") ($slideGrp+".translate") ;
+
+	// MotionPath + Up Vector creation
+	$mPathUpVec = `createNode motionPath`;
+	$upVecNul = `group -em -n ($propName+"_upVecNul")`;
+	connectAttr ($crvShape+".worldSpace[0]") ($mPathUpVec+".geometryPath");
+	connectAttr ($mPathUpVec+".rotateOrder") ($upVecNul+".rotateOrder");
+	connectAttr ($mPathUpVec+".allCoordinates") ($upVecNul+".translate");
+
+	if ($isEdge == 1){
+		// Normal Constraint
+		normalConstraint -weight 1 -aimVector 1 0 0 -upVector 0 1 0 -worldUpType "object" -worldUpObject $upVecNul $polyTrans $slideGrp;
+		setAttr ($mPathUpVec+".uValue") (1+$selCount);
+	} else if ($isEdge == 0){
+		setAttr ($mPathUpVec+".uValue") 1;
+	}
+
+}

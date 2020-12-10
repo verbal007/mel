@@ -1,0 +1,19 @@
+///////////////////////////////////////////////////////////////////////////////
+// jer_gmatchAry
+// Created by: Jeremy Sabo on Mar 22, 2005
+// Usage: jer_gmatchAry <array> <search string>
+// Desc: Searches an array for the number of occurances of an input string.
+
+global proc int jer_gmatchAry (string $array[], string $what){
+	int $num = 0;
+	string $match;
+	for ($string in $array){
+		$match = `gmatch $string $what`;
+		if ($match){
+			$num++;
+		}
+	}
+	return $num;		
+
+
+}// jer_gmatchAry END PROC 

@@ -1,0 +1,12 @@
+global proc jer_shellCam(){
+	float $focalLength = `getAttr testCam.focalLength`;
+	float $focPercent = ($focalLength/50);
+	float $distance = `getAttr testCam.tx`;
+	float $distPercent = ($distance/20);
+	print "----------------------\n";
+	print ("FocalLength= "+$focalLength+" ("+($focPercent*100)+"%)\n");
+	
+	print ("CameraDistance= "+$distance+" ("+($distPercent*100)+"%)\n");
+	print ("Calculated= "+(($focPercent*100)-($distPercent*100))+"\n");
+	print "----------------------\n";
+}

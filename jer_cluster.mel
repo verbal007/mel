@@ -1,0 +1,18 @@
+//////////////////////////////////////////////////////////////////////////////
+/* jer_cluster
+Created on Dec 31, 2005 by Jeremy Sabo
+
+Desc: Creates a cluster w/ the name of cluster
+based on object that is being deformed.
+
+*/
+//////////////////////////////////////////////////////////////////////////////
+
+global proc jer_cluster(){
+	string $sel[] = `ls -sl -fl`;
+	string $object = `match "^[^\.]*" $sel[0]`;  // match everything BUT the "."
+	$object = `substitute "Shape$" $object ""`;
+	string $cluster = `substitute "[_A-Z]*$" $object "_Cluster"`;
+	
+	cluster -name $cluster;
+}

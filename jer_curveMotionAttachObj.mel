@@ -1,0 +1,91 @@
+///////////////////////////////////////////////////////////////////////////
+/* jer_curveMotionAttachObj
+
+Created by Jeremy Sabo on June 11, 2008
+
+Requirements:  jer_curveClosestPoint.mel
+
+Desc:	Attach object to closest point on curve
+
+Usage:  Select curve and shift+select object(s) to attach to closest points
+on curve.  Run script.
+i.e.     jer_curveMotionAttachObj
+
+*/ 
+///////////////////////////////////////////////////////////////////////////
+
+global proc jer_curveMotionAttachObj(){
+
+string $sel[] = `ls -sl`;
+
+int $count;
+string $crv = $sel[0];
+string $obj;
+float $param;
+string $null;
+string $poc = "curveAttachObj_POC";
+string $mpath;
+string $upObj = ($sel[0]+"UpObj");
+
+if (`size $sel` < 2){
+	error "Please select somethin \n";
+}
+
+float $amount = (100 / (`size $sel`-1));  // progress amount
+float $percent;
+
+// create progress dialogue
+progressWindow
+	-title "Attachin to closest curve points..."
+	-progress $amount
+	-status "Working: 0%"
+	-isInterruptable true;
+
+for ($count =1;$count < `size $sel`;$count++){
+	$obj = $sel[$count];
+	$param = `jer_curveClosestPoint $crv $obj`;
+	print ("Param = "+$param);
+	
+	// attach to closest curve parameter via motionpath	
+	$mPath = `createNode motionPath`;
+	//**$slideGrp = `group -em -n ($obj+"_slideNull")`;
+	$slideGrp = $obj;
+	connectAttr ($crv+".worldSpace[0]") ($mPath+".geometryPath");  //** needs curveShape?
+	connectAttr ($mPath+".rotateOrder") ($slideGrp+".rotateOrder") ;
+	connectAttr ($mPath+".allCoordinates") ($slideGrp+".translate") ;
+	connectAttr ($mPath+".rotate") ($slideGrp+".rotate") ;
+	
+	setAttr ($mPath+".inverseFront") 1;
+	setAttr ($mPath+".frontAxis") 2;
+	setAttr ($mPath+".upAxis") 1;
+	setAttr ($mPath+".inverseUp") 1;
+	setAttr ($mPath+".bank") 1;
+	
+	setAttr ($mPath+".uValue") $param;
+	
+	// Set upVector as "ObjectUp"
+	if (!`objExists $upObj`){
+		spaceLocator -n $upObj;
+	}
+	setAttr ($mPath+".worldUpType") 1;
+	connectAttr -f ($upObj+".worldMatrix[0]") ($mPath+".worldUpMatrix");
+	
+
+     // Check if the dialog has been cancelled
+     if ( `progressWindow -query -isCancelled` ) break;
+
+     // Check if end condition has been reached
+     if ( `progressWindow -query -progress` >= 100 ) break;
+
+     $percent = ($count * $amount);
+
+     progressWindow -edit
+         -progress $percent
+         -status ("Status: "+$percent+"%");
+	
+	
+} // END // for ($count =1;$count < `size $sel`;$count++){
+
+progressWindow -endProgress;
+
+} // END // global proc float jer_curveAttachObj(){

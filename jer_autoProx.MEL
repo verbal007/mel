@@ -1,0 +1,49 @@
+//////////////////////////////////////////////////////////////////////////////
+// jer_autoProx v1b
+// Created by: Jeremy Sabo on Mar 22, 2005
+// Updated: Mar 24, 2005 - Removed PRX suffix
+// Desc: Select mesh and joint in any order, run script.
+//       Will rename the mesh to match name of joint, substituting "JNT" w/ ""
+//       ParentConstraints mesh to joint.
+
+global proc jer_autoProx () {
+	string $mesh;
+	string $jnt;
+	string $sel[] = `ls -sl`;
+	string $objTyp1 = `nodeType $sel[0]`;
+	string $objTyp2 = `nodeType $sel[1]`;
+	string $meshName;
+		
+	switch ($objTyp1) {
+		case "joint":
+			if (`nodeType $sel[1]` == "joint"){
+				error "Two joints selected.  Please select one joint and one transform object.";
+			}
+			$jnt = $sel[0];
+			$mesh = $sel[1];
+			break;
+		case "transform":
+			if (`nodeType $sel[1]` == "transform"){
+				error "Two transforms selected.  Please select one joint and one transform object.";
+			}
+			$jnt = $sel[1];
+			$mesh = $sel[0];
+			break;
+	} // END switch
+	print ("\nJoint is "+$jnt+"\n");
+	print ("Mesh is "+$mesh);
+	
+	// Rename mesh to match name of joint.
+	$meshName = `substitute "_JNT" $jnt ""`;
+	print $meshName;
+	rename $mesh $meshName;
+	
+	
+	// Parent or Constrain objects.
+	// parentConstraint -mo $jnt $meshName;
+	// Proxy mesh will be referenced into scene.  Will have to write a script that will later
+	// match up proxy mesh to appropriate joint, then parent mesh under joint.
+	
+	// ** See if I can cap holes in mesh & select new caps, subdivide and extrude face outward.
+
+} // END jer_autoProx

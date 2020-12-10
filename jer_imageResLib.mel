@@ -1,0 +1,530 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+jer_imageResLib
+
+Created by Jeremy Sabo on Feb 20th, 2007
+Updated:  March 12, 2007
+
+Desc:	Lists all "file" nodes in scene and source image.
+		Rename image file names and source path in one step.
+		Converts large 2048x2048 images into MED and SML textures.
+		Converts medium 1028x1024 images into SML textures.
+		Displays if LRG, MED & SML textures exist.
+		
+Requirements:  #s in filenames will funk up everything.
+
+//////////////////////////////////////////////////////////////////////////////
+*/
+
+global proc jer_imageResLib_rename() {
+
+}
+
+
+
+global proc jer_imageResLib_multiImage() {
+
+}
+
+
+
+global proc jer_imageResLib() {
+	/////////////////////////////////////
+	// Initialize ///////////////////////
+	/////////////////////////////////////
+	string $each;
+	int $count;
+
+	string $window = "jer_imageResLibUI";                                           // Window Name
+
+	string $multiSize_CHK[];														// Multi-Size Checkbox List
+
+	string $fileNodes[] = `ls -type "file"`;										// Texture File Node List
+	if (`size $fileNodes` < 1)
+		error "There are no texture files in this scene";
+
+	string $fileNode_TXT[];
+	string $fileNodesNew[];
+	string $fileNodesString;
+
+	string $fullPaths[];                                                            // Full Image Path List
+
+	string $fileNames[];                                                            // Image File Name List
+	string $fileName_TXT[];
+    string $fileNamesNew;
+    string $fileNamesString;
+
+    string $pathNames[];															// Image File Path List
+    string $pathNames_TXT;
+    string $pathNamesNew;
+
+    float $size[];
+	int $sizeXs[];																	// Image Size Width
+	int $sizeYs[];																	// Image Size Height
+	
+	//////////////////////////////////////////////////
+	// Obtain Image Information //////////////////////
+	//////////////////////////////////////////////////
+	
+	string $strSeparator = "";
+	for ($count = 0 ; $count < `size($fileNodes)` ; $count++) {
+        if ($count > 0){                                                            // Don't need this for "tokenize"
+            $strSeparator = ">";
+        }
+		$fileNodesString += ( $strSeparator + $fileNodes[$count]);
+		$fullPaths[$count] = `getAttr ($fileNodes[$count]+".fileTextureName")`;     // Full Image Path: query
+		$fileNames[$count] = `match "[^/]*$" $fullPaths[$count]`;					// Image File Name: query
+
+		if ($fileNames[$count] == ""){                                              // Tokenize ignores null values
+          $fileNames[$count] = " ";
+        }
+        $fileNamesString += ( $strSeparator + $fileNames[$count]);
+		$pathNames[$count] = `dirname $fullPaths[$count]`;							// Image Path: query
+
+		$size = `getAttr ($fileNodes[$count]+".outSize")`;
+		$sizeXs[$count] = $size[0];													// Image Size Width: query
+		$sizeYs[$count] = $size[1];													// Image Size Height: query
+	}
+
+	int $width = 1000;
+	int $height = 200;															// Window : set width
+	if ( `size $fileNodes` > 10 ) { 											// Window : set height min
+		$height = 600;
+		print "Large Height";
+	} else {
+		$height=((`size $fileNodes` * 21) + 35 );								// Window : set height
+	}
+                                                                               	// Common Path: Calculate
+	string $diffPaths[] = `stringArrayRemoveDuplicates $pathNames`;
+	string $commonPath;
+	int $pathLastCount = 0;
+	int $pathCount = 0;
+	for ($count = 0; $count < `size $diffPaths` ; $count++){
+		$pathCount = `stringArrayCount $diffPaths[$count] $pathNames`;
+		if ($pathCount > $pathLastCount){										// Path: does it have the most occurances?
+			$commonPath = $diffPaths[$count];
+			$pathLastCount = $pathCount;
+		}
+	}
+	print ("Commonly shared path is: "+$commonPath+"\n");
+	
+	string $sourceimages[] = `getFileList -folder ($commonPath+"/") -filespec "*.*"`;			// "sourceimages" Folder: list contents
+	
+	string $stripFile;
+	string $imageType;
+	string $sizeDefault[];
+	float $sizeDefColR[];
+	float $sizeDefColG[];
+	float $sizeDefColB[];
+
+	int $tnyExist[];
+	int $smlExist[];
+	int $medExist[];
+	int $lrgExist[];
+
+	for ($count = 0 ; $count < `size($fileNames)` ; $count++) {
+        $imageType = `match "[^.]*$" $fileNames[$count]`;								// Image Type: Query
+        $stripFile = `match "^[^_]*" $fileNames[$count]`;								// File Name: strip size & file type
+        
+        $sizeDefault[$count] = `match "[^_]*$" $fileNames[$count]`;
+		$sizeDefault[$count] = `substitute ("."+$imageType) $sizeDefault[$count] ""`;
+
+		switch ($sizeDefault[$count]) {
+			case "TNY":
+				$sizeDefColR[$count] = 0.99;
+				$sizeDefColG[$count] = 0.43;
+				$sizeDefColB[$count] = 1;
+				break;
+			case "SML":
+				$sizeDefColR[$count] = 0.81;
+				$sizeDefColG[$count] = 0.77;
+				$sizeDefColB[$count] = 0.16;
+				break;
+			case "MED":
+				$sizeDefColR[$count] = 0.05;
+				$sizeDefColG[$count] = 1;
+				$sizeDefColB[$count] = 0.05;
+				break;
+			case "LRG":
+				$sizeDefColR[$count] = 0.8;
+				$sizeDefColG[$count] = 0.5;
+				$sizeDefColB[$count] = 0.2;
+				break;
+		}
+
+		print ($sizeDefault[$count]+" Color R = "+$sizeDefColR[$count]+"\n");
+
+
+
+        if (`stringArrayContains ($stripFile+"_TNY."+$imageType) $sourceimages`){		// Tiny Image: Exists?
+            $tnyExist[$count] = 1;
+        } else {
+            $tnyExist[$count] = 0;
+        }
+
+        if (`stringArrayContains ($stripFile+"_SML."+$imageType) $sourceimages`){		// Small Image: Exists?
+            $smlExist[$count] = 1;
+        } else {
+            $smlExist[$count] = 0;
+        }
+
+        if (`stringArrayContains ($stripFile+"_MED."+$imageType) $sourceimages`){		// Medium Image: Exists?
+            $medExist[$count] = 1;
+        } else {
+            $medExist[$count] = 0;
+        }
+
+        if (`stringArrayContains ($stripFile+"_LRG."+$imageType) $sourceimages`){		// Large Image: Exists?
+            $lrgExist[$count] = 1;
+        } else {
+            $lrgExist[$count] = 0;
+        }
+ 	}
+	 
+
+
+
+	////////////////////////////////////
+	// UI Creation /////////////////////
+	////////////////////////////////////
+	if ( `window -exists $window`)                                                  // Window : re-create
+		deleteUI $window;
+	window
+		-maximizeButton 0
+		-resizeToFitChildren 0
+		-title "Image Resolution Library"
+		-iconName "Images"
+		-menuBar false
+		-menuBarVisible false
+		-widthHeight $width $height
+		$window
+	;
+
+	if ( `size $fileNodes` > 10 )													// Scroll Layout: create
+		scrollLayout -horizontalScrollBarThickness 0;
+
+			columnLayout
+				-columnAttach "both" 0
+				-rowSpacing 1
+				-columnWidth 1500
+			;
+				rowLayout -h 245															// Row Layout:  create to hold column lists
+					-cw 1 200
+					-cw 2 200
+					-cw 3 320
+					-cw 4 35
+					-cw 5 35
+					-cw 6 30
+					-cw 7 30
+					-cw 8 30
+					-cw 9 30
+					-cw 10 30
+					-numberOfColumns 10;
+
+					columnLayout // 1 //                                   					// File Node: create column 1 UI
+						-columnAttach "both" 0
+						-rowSpacing 1
+						-columnWidth 200
+					;
+						for ( $count = 0 ; $count < `size($fileNodes)` ; $count++ ) {		// File Nodes: text fields
+							textField
+								-text $fileNodes[$count]
+								($window+"_fileNode_"+$count)
+							;
+						}
+
+						setParent ..;
+
+					columnLayout // 2 //													// Image Name: create column 2 UI
+						-columnAttach "both" 0
+						-rowSpacing 1
+						-columnWidth 200
+					;
+						for ( $count = 0 ; $count < `size($fileNames)` ; $count++ ) {		// File Names: text fields
+							if ($pathNames[$count] != $commonPath)
+                            	textField
+									-text $fileNames[$count]
+									-enable 0
+									($window+"_fileName_"+$count)
+								;
+							else
+								textField
+									-text $fileNames[$count]
+									($window+"_fileName_"+$count)
+								;
+						}
+
+						setParent ..;
+
+					columnLayout // 3 //													// Image Path: create column 3 UI
+						-columnAttach "both" 0
+						-rowSpacing 1
+						-columnWidth 320
+					;
+
+						for ( $count = 0 ; $count < `size($pathNames)` ; $count++ ) {		// File Paths: text fields
+							if ($pathNames[$count] != $commonPath)
+                            	textField
+									-text $pathNames[$count]
+									-enable 0
+									($window+"_pathName_"+$count)
+								;
+							else
+								textField
+									-text $pathNames[$count]
+									($window+"_pathName_"+$count)
+								;
+						}
+
+						setParent ..;
+
+					columnLayout // 4 //													// Image SizeX: create column 4 UI w/ unique name
+						-columnAttach "both" 0
+						-rowSpacing 1
+						-columnWidth 35
+					;
+						for ( $count = 0 ; $count < `size($sizeXs)` ; $count++ ) {			// Image SizeX: populate list
+							textField
+								-text $sizeXs[$count]
+								-editable 0
+								($window+"_sizeX_"+$count)
+							;
+						}
+
+						setParent ..;
+
+					columnLayout // 5 //													// Image SizeY: create column UI
+						-columnAttach "both" 0
+						-rowSpacing 1
+						-columnWidth 35
+					;
+						for ( $count = 0 ; $count < `size($sizeXs)` ; $count++ ) {			// Image SizeX: populate list
+							textField
+								-text $sizeYs[$count]
+								-editable 0
+								($window+"_sizeY_"+$count)
+							;
+						}
+
+						setParent ..;
+
+					columnLayout // 6 //													// Tiny Res: create column UI
+						-columnAttach "both" 0
+						-rowSpacing 1
+						-columnWidth 30
+					;
+						for ( $count = 0 ; $count < `size($tnyExist)` ; $count++ ) {		// Tiny Res: populate list
+							if ($tnyExist[$count] == 1){
+								button
+									-label "TNY"
+									-enable 1
+									-backgroundColor 0.99 0.43 1
+									($window+"_tnyExist_"+$count)
+
+								;
+							} else {
+								button
+									-label "tny"
+									-enable 0
+									($window+"_tnyExist_"+$count)
+								;
+							}
+						}
+
+						setParent ..;
+
+					columnLayout // 7 //													// Small Res: create column UI
+						-columnAttach "both" 0
+						-rowSpacing 1
+						-columnWidth 30
+					;
+						for ( $count = 0 ; $count < `size($smlExist)` ; $count++ ) {		// Small Res: populate list
+							if ($smlExist[$count] == 1){
+								button
+									-label "SML"
+									-enable 1
+									-backgroundColor 0.81 0.77 0.16
+									($window+"_smlExist_"+$count)
+
+								;
+							} else {
+								button
+									-label "sml"
+									-enable 0
+									($window+"_smlExist_"+$count)
+								;
+							}
+						}
+
+						setParent ..;
+
+					columnLayout // 8 //														// Medium Res: create column UI
+						-columnAttach "both" 0
+						-rowSpacing 1
+						-columnWidth 30
+					;
+						for ( $count = 0 ; $count < `size($medExist)` ; $count++ ) {			// Medium Res: populate list
+							if ($medExist[$count] == 1){
+								button
+									-label "MED"
+									-enable 1
+									-backgroundColor 0.05 1 0.05
+									($window+"_medExist_"+$count)
+
+								;
+							} else {
+								button
+									-label "med"
+									-enable 0
+									($window+"_medExist_"+$count)
+								;
+							}
+						}
+
+						setParent ..;
+
+					columnLayout // 9 //														// Large Res: create column UI
+						-columnAttach "both" 0
+						-rowSpacing 1
+						-columnWidth 30
+					;
+						for ( $count = 0 ; $count < `size($lrgExist)` ; $count++ ) {			// Large Res: populate list
+							if ($lrgExist[$count] == 1){
+								button
+									-label "LRG"
+									-enable 1
+									-backgroundColor 0.8 0.5 0.2
+									($window+"_lrgExist_"+$count)
+
+								;
+							} else {
+								button
+									-label "lrg"
+									-enable 0
+									($window+"_lrgExist_"+$count)
+								;
+							}
+						}
+
+						setParent ..;
+						
+					columnLayout // 10 //														// Default Res: create column UI
+						-columnAttach "both" 0
+						-rowSpacing 1
+						-columnWidth 30
+					;
+						for ( $count = 0 ; $count < `size($sizeDefault)` ; $count++ ) {			// Default Res: populate list
+								button
+									-label $sizeDefault[$count]
+									-enable 0
+									-backgroundColor $sizeDefColR[$count] $sizeDefColG[$count] $sizeDefColB[$count]
+									($window+"_sizeDefault_"+$count)
+								;
+						}
+						setParent ..;
+					setParent ..;
+
+				columnLayout
+					-columnAttach "both" 0
+					-rowSpacing 1
+					-columnWidth 600
+				;
+
+				button -label "Stupid"
+					-c ("jer_imageResLib_query "+$window+" \""+$commonPath+"\" \""+$fileNodesString+"\" \""+$fileNamesString+"\"")
+				;
+	showWindow $window;																// Window: show
+
+} // END // global proc jer_imageResLib() {
+
+global proc jer_imageResLib_query(string $window, string $commonPath, string $fileNodesString, string $fileNamesString) {
+    ////////////////////////////////////////////
+	// Query UI Info ///////////////////////////
+	////////////////////////////////////////////
+	int $count;
+	string $each;
+	string $buffer[];
+	string $fileNamesOrig[];
+    tokenize $fileNamesString ">" $fileNamesOrig; 					// File NAMES original: Create Array from String
+	string $fileNodesOrig[];
+	tokenize $fileNodesString ">" $fileNodesOrig;					// File NODES original: Create Array from String
+
+    // Multi-Size:  Query UI
+    // Image Res: Query UI for available sizes.
+
+	////////////////////////////////////////////////////////////////////////////////////////////////////////
+	// File Rename /////////////////////////////////////////////////////////////////////////////////////////
+	// Compare original name to new name that appears in UI. If a difference is detected & item does not already
+    // exist in $diff list, add both names to $diff variable, avoiding dups. Stepping through $orig list,
+	// compare original name in $diff to item in $orig list. When there's a match, rename the item in the
+	// $orig list to the new name in the $diff variable & update the fileNode's "fileTextureName" attribute.
+	////////////////////////////////////////////////////////////////////////////////////////////////////////
+
+	string $fileNamesNew[];
+	string $fileNameDiffStr[];
+	for  ( $count = 0 ; $count < (`size $fileNamesOrig`) ; $count++ ) {           // Step through & Skip last blank
+		string $dupDetect = 0;                                                    // Found Duplicates Flag                                                    // Temp Array
+		$fileNamesNew[$count] = `textField -q -text ($window+"_fileName_"+$count)`;	      // File Names: query UI
+		if ($fileNamesOrig[$count] != $fileNamesNew[$count])                      // File Name: detect if change was made
+        {
+           print ($fileNamesNew[$count]+" != "+$fileNamesOrig[$count]+"\n");
+            if (`size ($fileNameDiffStr)` > 0)
+            {
+    			for ($each in $fileNameDiffStr)
+                {                                                                   // Diff List: name already in list?
+    				tokenize $each ">" $buffer;
+    				if ($fileNamesOrig[$count] == $buffer[0])
+                    {
+                    print ($fileNamesOrig[$count]+" matches "+$buffer[0]+"\n");
+    					$dupDetect = 1;
+    				}
+                }
+            }
+			else
+			{
+              $dupDetect = 0;
+            }
+            if ($dupDetect == 0){
+              $fileNameDiffStr[`size($fileNameDiffStr)`] = ($fileNamesOrig[$count]+">"+$fileNamesNew[$count]);
+            }
+
+		}  // END // if ($fileNamesOrig[$count] != $fileNamesNew[$count]){
+
+	}  // END //  for  ( $count = 0 ; $count < (`size $fileNamesOrig`) ; $count++ )
+
+    print "Difference List\n=============================\n";
+	print $fileNameDiffStr;
+    print "=============================\n";
+
+
+	string $fileNameDiff[];
+
+	for ($each in $fileNameDiffStr){
+		clear $fileNameDiff;
+		tokenize $each ">" $fileNameDiff;
+		if (`stringArrayContains $fileNameDiff[0] $fileNamesOrig`){
+            print ("Renaming "+$commonPath+"/"+$fileNameDiff[0]+" to "+$commonPath+"/"+$fileNameDiff[1]+"\n");
+		//**	sysFile -rename ($commonPath+"/"+$fileNameDiff[1]) ($commonPath+"/"+$fileNameDiff[0]);	// File:  rename
+		}
+	}
+
+	for ($count = 0 ; $count < (`size $fileNamesOrig`) ; $count++){			// Step through & Skip last blank
+		for ($each in $fileNameDiffStr){
+			clear $fileNameDiff;
+			tokenize $each ">" $fileNameDiff;
+			if ($fileNamesOrig[$count] == $fileNameDiff[0]){
+	           print ("Set Attribute "+$fileNodesOrig[$count]+".fileTextureName to "+$commonPath+"/"+$fileNameDiff[1]+"\n");
+				//setAttr ($fileNodesOrig[$count]+".fileTextureName") ($commonPath+"/"+$fileNameDiff[1]);			// Node:  retarget
+			}
+  		}
+	}
+
+
+	string $fileNodesNew[];
+	for  ( $count = 0 ; $count < (`size $fileNodesOrig`-1) ; $count++ ) {           // File Node: Query UI
+		$fileNodesNew[$count] = `textField -q -text ($window+"_fileNode_"+$count)`;
+
+
+	}
+
+}// END // global proc jer_imageResLib_query

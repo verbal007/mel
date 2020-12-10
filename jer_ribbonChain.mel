@@ -1,0 +1,95 @@
+// jer_ribbonChain
+// requirements: remember to rebuild surface parameter range from 0-1.
+// usage: select surface.  run script, specifying name and number of joints
+
+// Example: 
+
+////////////////////////////////////////////
+///// ADD LOCATOR //////////////////////////
+////////////////////////////////////////////
+proc string jer_ribbonChain_addLocs(int $i, float $locatorCount, string $firstLocator, string $name, string $surface, string $locPrev){
+
+	string $pre = ($name+"_ribChain");
+	
+	float $spacing;
+	if ($i == 0){
+		$spacing = 0;
+	} else {
+		$spacing = $i / $locatorCount ;
+	}
+	
+	print ("spacing is "+$spacing+"\n");
+	
+	// Create Locators
+	string $buffer[] = `spaceLocator -n ($pre+"_attach_"+$i+"loc")`;
+	string $locAttach = $buffer[0];
+	string $locUp;
+	string $upGrp;
+	string $POS; 
+
+	if ($i != 0){
+		$buffer =`spaceLocator -n ($pre+"_up_"+$i+"_loc")`;
+		$locUp  = $buffer[0];
+		$upGrp = `group -em -n ($pre+"_up_"+$i+"_grp")`;
+		parent $locUp $upGrp;
+		$pointConst = `pointConstraint -n ($pre+"_pointConst") $locAttach $upGrp`;
+		
+		if ($i <= $locatorCount){
+			aimConstraint -n ($pre+"_"+$i+"_aim") -offset 0 0 0 -weight 1 -aimVector 1 0 0 -upVector 0 1 0 -worldUpType "object" -worldUpObject $locUp $locAttach $locPrev; // normal constraint
+		}
+		if ($i == $locatorCount){
+			aimConstraint -n ($pre+"_"+$i+"_aimDown") -offset 0 0 0 -weight 1 -aimVector -1 0 0 -upVector 0 1 0 -worldUpType "object" -worldUpObject $locUp $locPrev $locAttach;
+		}
+	}
+	
+	$POS = `createNode -n ($pre+"_POS") pointOnSurfaceInfo`; 
+	setAttr ($POS+".parameterU") $spacing;
+	setAttr ($POS+".parameterV") .5;
+	connectAttr -f ($surface+".worldSpace[0]") ($POS+".inputSurface");
+	connectAttr ($POS+".position") ($locAttach+".translate");
+	if ($i != 0){
+		connectAttr ($POS+".normalizedNormal") ($locUp+".translate");
+	}
+
+	if ($i == 1){															//  Finish up first locator on second step
+		$buffer =`spaceLocator -n ($pre+"_up_0_loc")`;
+		$locUp  = $buffer[0];
+		$upGrp = `group -em -n ($pre+"_up_0_grp")`;
+		parent $locUp $upGrp;
+		$pointConst = `pointConstraint -n ($pre+"_pointConst") $firstLocator $upGrp`;
+		aimConstraint -n ($pre+"_up_0_aim") -offset 0 0 0 -weight 1 -aimVector 1 0 0 -upVector 0 1 0 -worldUpType "object" -worldUpObject $locUp $locAttach $firstLocator;
+		connectAttr ($POS+".normalizedNormal") ($locUp+".translate");
+	}
+	
+	return $locAttach;
+
+	// rebuildSurface -ch 1 -rpo 1 -rt 0 -end 1 -kr 0 -kcp 0 -kc 0 -su 4 -du 3 -sv 1 -dv 3 -tol 0.001 -fr 0  -dir 2 "ribbonChain_suf";
+	// connectAttr locator2.slide "pointOnSurfaceInfo1.parameterU" 
+	
+} // END // proc jer_ribbonChain_addLocs (string $name, int $locatorCount){
+
+
+////////////////////////////////////////////
+///// MAIN PROC ////////////////////////////
+////////////////////////////////////////////
+global proc jer_ribbonChain(string $name, int $locatorCount){
+
+	string $sel[] = `ls -sl`;
+	string $surface = $sel[0];
+	float $spacing = 1 / $locatorCount;
+	string $locator;
+	string $firstLocator = "nottin";
+	string $prevLocator = "nottin";
+	
+	for ($i = 0; $i <= $locatorCount; $i++){
+		print ("Count is "+$i+"\n");
+		// constrain first locator to this locator
+		$prevLocator = `jer_ribbonChain_addLocs $i $locatorCount $firstLocator $name $surface $prevLocator`;
+		
+		if ($i == 0){
+			$firstLocator = $prevLocator;
+		}
+		
+	}
+
+} //END// global proc jer_ribbonChain($locatorCount){

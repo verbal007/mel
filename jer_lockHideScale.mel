@@ -1,0 +1,27 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+ jer_lockHideScale
+ Created by: Jeremy Sabo on Dec 7, 2013
+
+ Desc: locks & hides all scale attributes on selected objects
+
+//////////////////////////////////////////////////////////////////////////////
+*/
+global proc jer_lockHideScale(){
+
+string $transforms[] = `ls -sl -type "transform"`;
+string $match;
+string $each;
+string $transform;
+
+for ($each in $transforms){
+	if (`objectType $each` == "transform"){ 
+			print ($each+"  LOCKED\n");
+			setAttr -lock true -keyable false ($each+".sx");
+			setAttr -lock true -keyable false ($each+".sy");
+			setAttr -lock true -keyable false ($each+".sz");
+	}
+
+} // end // for
+
+} // END // global proc

@@ -1,0 +1,24 @@
+////////////////////////////////////////////////////////////////////////
+/*
+jer_metaNodeCreate
+v 1
+
+Created by Jeremy Sabo on May 28, 2009
+
+Desc:	Creates metadata node for connecting.
+		
+Usage:	jer_rotBlendAim BlenderCtrl BlenderAttr SlaveObject Master1Obj Master2Obj
+	i.e.  jer_rotBlendAim Chest_c Blend BND_Arm_ IK_Arm FK_Arm;
+
+*/ 
+////////////////////////////////////////////////////////////////////////
+
+global proc jer_metaNodeCreate(){
+
+string $metaNode = `createNode network`;
+addAttr -ln "metaType" -dt "string" $metaNode;
+addAttr -ln "version" -at "longd" $metaNode;
+addAttr -ln "metaParent" -at "message" $metaNode;
+addAttr -ln "metaChildren" -dt "string" $metaNode;
+
+} // END // global proc jer_metaNodeCreate

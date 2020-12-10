@@ -1,0 +1,39 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+ jer_preSufHierRename
+ Created by: Jeremy Sabo on Oct 4, 2008
+ Desc:	renames object and children with supplient prefix
+ Usage:	jer_preSufHierRename 0 shoe_geo "oldSkel_";
+ 		first: 1 if suffix, 0 if prefix.
+ 		second: name of object to rename
+ 		last: prefix or suffix label
+
+ Bonus: $sel = `ls -sl -allPaths`;
+		jer_preSufHierRename 0 $sel[0] "oldSkel_";
+//////////////////////////////////////////////////////////////////////////////
+*/
+
+global proc jer_preSufHierRename(int $isSuffix, string $parent, string $label){
+	int $i;
+	int $count;
+	string $each;
+	string $noPath;
+	string $children[] = `listRelatives -allDescendents -fullPath $parent`;
+
+	for ($each in $children){
+        $noPath = `match "[^|]*$" $each `;
+        if ($isSuffix == 0){
+    		rename $each ($label+$noPath);
+    	} else {
+        	rename $each ($noPath+$label);
+        }
+ 	}
+    $noPath = `match "[^|]*$" $parent`;
+ 	if ($isSuffix == 0){
+    	rename $parent ($label+$noPath );
+	}else{
+		rename $parent ($noPath+$label);
+	}
+}
+
+

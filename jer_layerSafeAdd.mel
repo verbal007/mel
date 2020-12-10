@@ -1,0 +1,32 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+// jer_layerSafeAdd
+Created by Jeremy Sabo on Jun 4, 2007
+
+Desc:	Add objects of specified type to active layer, without overriding set color.
+	
+Docs:	Select object(s) and run script.
+	
+//////////////////////////////////////////////////////////////////////////////
+*/
+
+global proc jer_layerSafeAdd(){
+
+string $each;
+string $activeLayer = `editDisplayLayerGlobals -q -currentDisplayLayer`;
+string $shapes[];
+string $shapesAll[];
+string $sel[] = `ls -sl -allPaths -dag`;
+
+for ($each in $sel){
+	$shapes = `listRelatives -children -path -type "nurbsCurve" $each`;
+	$shapesAll = `stringArrayCatenate $shapesAll $shapes`;
+}
+
+for ($each in $shapesAll) {  
+    setAttr ($each+".overrideEnabled") 1;
+    connectAttr -f ($activeLayer+".drawInfo.visibility") ($each+".drawOverride.overrideVisibility");
+    connectAttr -f ($activeLayer+".drawInfo.displayType") ($each+".drawOverride.overrideDisplayType");
+}
+
+} // END PROC // jer_layerSafeAdd

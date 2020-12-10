@@ -1,0 +1,620 @@
+//------------------------------------------------------------------------------------------------------------------
+//
+//	jer_procForJoints.mel
+//
+//	written by Bernard Lessard on March 29 2006
+//
+//	Version 1.0
+//
+//	Description:
+//
+//		Procedure use to work with joints
+//
+//------------------------------------------------------------------------------------------------------------------
+
+//----------------------------------------------------------------//
+// procedure who change the rotation order for all the joints in the array
+//----------------------------------------------------------------//
+global proc jer_ChangeRotOrder(string $allJoints[], int $rotateOrder)
+{
+	// see http://localhost:4449/Maya7.0/en_US/Nodes/transform.html?hl=rotateOrder
+	// for more information about the rotation order
+	for($jnt in $allJoints)
+	{
+		setAttr ($jnt+".rotateOrder") $rotateOrder;
+	}
+}
+
+/////////////////////////////////////////////////////////////////////
+//Return string containing names of joints that form a chain from 
+//the first joint to the second joint, or empty string if the 
+//two joints are not connected
+/////////////////////////////////////////////////////////////////////
+global proc string[] jer_GetJointChain(string $sFirstJoint, string $sLastJoint)
+{
+	string $saTemp[];
+	string $sTempJoint;
+	int $iFoundNextJoint;
+	string $saJointChain[];
+	int $iJointNum;
+	
+	$sTempJoint = $sFirstJoint;
+	$iJointNum = 0;
+	$saJointChain[$iJointNum] = $sTempJoint;
+	$iFoundNextJoint = 0;
+	
+	$saTemp = `listRelatives -c $sTempJoint`;
+	
+	//traverse the chain until the last joint found or the end of the chain
+	do
+	{
+		if((`size $saTemp` > 0) && (`nodeType $saTemp[0]` == "joint"))
+		{
+			$iFoundNextJoint = 1;
+			$sTempJoint = $saTemp[0];
+			$iJointNum++;
+			$saJointChain[$iJointNum] = $sTempJoint;
+			
+			clear $saTemp;
+			$saTemp = `listRelatives -c $sTempJoint`;
+		}
+		else
+		{
+			$iFoundNextJoint = 0;
+		}
+	}
+	while(($iFoundNextJoint == 1) && ($saJointChain[$iJointNum] != $sLastJoint));
+	
+	// if chain is traversed to the end and the last joint not found 
+	// clear the array of joint names to be returned
+	if($saJointChain[$iJointNum] != $sLastJoint)
+	{
+		clear $saJointChain;
+	}
+	
+	return $saJointChain;
+}
+
+////////////////////////////////////////////////////////////////////
+// Set IK
+////////////////////////////////////////////////////////////////////
+global proc string[] jer_makeIK(string $joints[])
+{
+	string $IKJoints[];
+	
+	//duplicate the joint chain, make FK and IK chains
+	$IKJoints = jer_DuplicateJointChain($joints, "IK");
+	
+	//create a pair of orient and aim locators for each joint in the chains and constraint them
+	for($i=0; $i<(size($joints)-1); $i++)
+	{
+		string $IKLocators[] = jer_CreateOrientAimLocators($IKJoints[$i], $IKJoints[$i + 1], "g"); //group locators under the joints
+		
+		string $DRVLocatorsUp = $joints[$i]+"_DRV_JNT_up_VEC";
+		string $DRVLocatorsAim = $joints[$i]+"_DRV_JNT_aim_VEC";
+//		string $test1[] = `pointConstraint $IKLocators[0] $DRVLocatorsUp`;
+//		string $test2[] = `pointConstraint $IKLocators[1] $DRVLocatorsAim`;
+//		delete $test1[0];
+//		delete $test2[0];
+		pointConstraint $IKLocators[0] $DRVLocatorsUp;
+		pointConstraint $IKLocators[1] $DRVLocatorsAim;
+	}
+	print(($IKJoints[(size($joints)-2)])+"\n");
+	//create IK Handle
+	int $iNumJoints = `size $joints`;
+	string $IKHandle[] = `ikHandle -name (($IKJoints[(size($joints)-2)])+"_Handle") -sj $IKJoints[0] -ee $IKJoints[$iNumJoints - 2]`; 
+	return $IKHandle;
+}
+
+////////////////////////////////////////////////////////////////////
+// Set FK
+////////////////////////////////////////////////////////////////////
+global proc jer_makeFK(string $joints[])
+{
+	string $FKJoints[];
+	
+	//duplicate the joint chain, make FK and IK chains
+	$FKJoints = jer_DuplicateJointChain($joints, "FK");
+	
+	//create a pair of orient and aim locators for each joint in the chains and constrain them
+	for($i = 0; $i < (`size $FKJoints` - 1); $i++)
+	{
+		//group locators under the joints
+		string $FKLocators[] = jer_CreateOrientAimLocators($FKJoints[$i], $FKJoints[$i + 1], "g");
+		
+		string $DRVLocatorsUp = $joints[$i]+"_DRV_JNT_up_VEC";
+		string $DRVLocatorsAim = $joints[$i]+"_DRV_JNT_aim_VEC";
+//		string $test1[] = `pointConstraint $FKLocators[0] $DRVLocatorsUp`;
+//		string $test2[] = `pointConstraint $FKLocators[1] $DRVLocatorsAim`;
+//		delete $test1[0];
+//		delete $test2[0];
+		pointConstraint $FKLocators[0] $DRVLocatorsUp;
+		pointConstraint $FKLocators[1] $DRVLocatorsAim;
+	}
+}
+
+////////////////////////////////////////////////////////////////////
+// make Blend locator
+////////////////////////////////////////////////////////////////////
+global proc string[] jer_makeDRV(string $joints[])
+{
+	string $DRVJoints[];
+	// create blend joints
+	$DRVJoints = jer_DuplicateJointChain($joints, "DRV");
+	//create a pair of orient and aim locators for each joint in the chains and constrain them
+	for($i=0; $i < (`size $DRVJoints` - 1); $i++)
+	{
+		jer_CreateOrientAimLocators($DRVJoints[$i], $DRVJoints[$i+1], "c"); //constrain joints under the locators
+	}
+	setAttr ($DRVJoints[0] + ".visibility") on;
+	return $DRVJoints;
+}
+
+////////////////////////////////////////////////////////////////////
+//The main set up procedure
+////////////////////////////////////////////////////////////////////
+global proc int jer_BuildFKIK(string $sControl, string $saBlendJoints[])
+{
+	////////////////////////////////////////////////
+	//variable declarations
+	global string $g_sCONSTBlendChannelName;
+	////////////////////////////////////////////////
+	
+	//add blend control attribute 
+	addAttr -ln $g_sCONSTBlendChannelName -at double -min 0 -max 1 -dv 0 $sControl;
+	setAttr -e -keyable true ($sControl + "." + $g_sCONSTBlendChannelName);
+	
+	//create a pair of orient and aim locators for each joint in the chains and constrain them
+									jer_makeFK($saBlendJoints);
+	string $IKHandle[] =		jer_makeIK($saBlendJoints);
+	
+	// for visibility
+	string $sReverseNode = `shadingNode -name ($sControl+"_"+$g_sCONSTBlendChannelName+"_Reverse") -asUtility reverse`;
+	// constrain FK IK to control
+	for($i = 0; $i < (`size $saBlendJoints` - 1); $i++)
+	{
+		jer_ConstrainBlendLocators($saBlendJoints[$i], $sControl, $sReverseNode);
+	}
+	
+	// set visibility
+	string $FKJointName = $saBlendJoints[0]+"_FK_JNT";
+	connectAttr ($sControl + "." + $g_sCONSTBlendChannelName) ($FKJointName + ".visibility");
+	connectAttr -f ($sControl + "." + $g_sCONSTBlendChannelName) ($sReverseNode + ".inputX");
+	string $IKJointName = $saBlendJoints[0]+"_IK_JNT";
+	connectAttr -f ($sReverseNode + ".outputX") ($IKJointName + ".visibility");
+	connectAttr -f ($sReverseNode + ".outputX") ($IKHandle[0] + ".visibility");
+	
+	return 1;
+}
+
+/////////////////////////////////////////////////////////////////////
+//Duplicate the given joint chain, renaming the joints with the given suffix
+/////////////////////////////////////////////////////////////////////
+global proc string[] jer_DuplicateJointChain(string $saOriginalJoints[], string $sSuffix)
+{
+	string $saDuplicatedJoints[];
+	string $stripedName;
+	int $i;
+	
+	$saDuplicatedJoints = `duplicate -rc $saOriginalJoints[0]`;
+	if(size($saDuplicatedJoints)>size($saOriginalJoints))
+	{
+		string $array[] = $saDuplicatedJoints;
+		clear $saDuplicatedJoints;
+		for($i = 0; $i<size($array); $i++)
+		{
+			if($i<size($saOriginalJoints))
+			{
+				$saDuplicatedJoints[$i] = $array[$i];
+			}
+			else 
+			{
+				delete $array[$i];
+				break;
+			}
+		}
+	}
+	//strip old suffix
+	substitute "[^_]*$" $saOriginalJoints[0] "";
+	
+	//create new suffix
+	$sSuffix += "_JNT";
+	
+	//rename the joints
+	for($i = 0; $i < size($saOriginalJoints); $i++)
+	{
+		$saDuplicatedJoints[$i] = `rename $saDuplicatedJoints[$i] ($saOriginalJoints[$i]+"_"+$sSuffix)`;
+	}
+
+	return $saDuplicatedJoints;
+}
+
+/////////////////////////////////////////////////////////////////////
+//Create two aim and point constraints for a given pair of joints
+//position them, and group them, return name of the group. 
+//Depending on the flag either group locators under the joints, or 
+//constrain joints under the locators
+/////////////////////////////////////////////////////////////////////
+global proc string[] jer_CreateOrientAimLocators(string $sJoint1, string $sJoint2, string $sFlag)
+{
+	string $sOrientLocator;
+	string $sAimLocator;
+	string $sGroupName;
+	string $saConstraints[];
+	string $saLocators[];
+	int $iIndex;
+	global float $g_fCONSTLocatorsMoveDistance;
+	
+	//create and name the locators and the group
+	$sOrientLocator = `createNode "transform" -n ($sJoint1 + "_up_VEC")`;
+	createNode "locator" -n ($sJoint1 + "_up_VEC_locator") -p $sOrientLocator;
+
+	$sAimLocator = `createNode "transform" -n ($sJoint1 + "_aim_VEC")`;
+	createNode "locator" -n ($sJoint1 + "_aim_VEC_locator") -p $sAimLocator;
+	
+	$sGroupName = `createNode "transform" -n ($sJoint1 + "_VEC")`;
+	
+	//-------------------------------------------------------------------------
+	//translate and orient the locators and the group
+	pointConstraint $sJoint1 $sOrientLocator;
+	orientConstraint $sJoint1 $sOrientLocator;
+	$saConstraints = `listRelatives -c $sOrientLocator`;
+	$iIndex = jer_ParseString($saConstraints, "orientConstraint");
+	if($iIndex >= 0)
+	{
+		delete $saConstraints[$iIndex];
+	}
+	$iIndex = jer_ParseString($saConstraints, "pointConstraint");
+	if($iIndex >= 0)
+	{
+		delete $saConstraints[$iIndex];
+	}
+	move -r -os -wd 0 0 $g_fCONSTLocatorsMoveDistance $sOrientLocator;
+	clear $saConstraints;
+	
+	pointConstraint $sJoint2 $sAimLocator;
+	orientConstraint $sJoint1 $sAimLocator;
+	$saConstraints = `listRelatives -c $sAimLocator`;
+	$iIndex = jer_ParseString($saConstraints, "orientConstraint");
+	if($iIndex >= 0)
+	{
+		delete $saConstraints[$iIndex];
+	}
+	$iIndex = jer_ParseString($saConstraints, "pointConstraint");
+	if($iIndex >= 0)
+	{
+		delete $saConstraints[$iIndex];
+	}
+	move -r -os -wd 0 $g_fCONSTLocatorsMoveDistance 0 $sAimLocator;
+	clear $saConstraints;
+	
+	pointConstraint $sJoint1 $sGroupName;
+	orientConstraint $sJoint1 $sGroupName;
+	$saConstraints = `listRelatives -c $sGroupName`;
+	$iIndex = jer_ParseString($saConstraints, "orientConstraint");
+	if($iIndex >= 0)
+	{
+		delete $saConstraints[$iIndex];
+	}
+	$iIndex = jer_ParseString($saConstraints, "pointConstraint");
+	if($iIndex >= 0)
+	{
+		delete $saConstraints[$iIndex];
+	}
+	clear $saConstraints;
+	//-------------------------------------------------------------------------	
+		
+	parent $sOrientLocator $sGroupName;
+	parent $sAimLocator $sGroupName;
+	
+	$saLocators[0] = $sOrientLocator;
+	$saLocators[1] = $sAimLocator;
+	setAttr ($saLocators[0]+".visibility") off;
+	setAttr ($saLocators[1]+".visibility") off;
+		
+	//Parent or constrain the group according to the flag
+	if($sFlag == "c")
+	{
+		aimConstraint -offset 0 0 0 -weight 1 -aimVector 0 1 0 -upVector 0 0 1 -worldUpType "object" -worldUpObject $sOrientLocator $sAimLocator $sJoint1;
+	}
+	else if($sFlag == "g")
+	{
+		parent $sGroupName $sJoint1;
+	}
+	else
+	{
+		error "Invalid flag passed to CreateOrientAimLocators.";
+	}
+	
+	return $saLocators;
+}
+
+/////////////////////////////////////////////////////////////////////
+//Constrain blend locators under the IK and FK locators
+/////////////////////////////////////////////////////////////////////
+global proc jer_ConstrainBlendLocators(string $saBlendJoints, string $sControl, string $sReverseNode)
+{
+	string $saBlendLocators[];
+	$saBlendLocators[0] = $saBlendJoints+"_DRV_JNT_up_VEC";
+	$saBlendLocators[1] = $saBlendJoints+"_DRV_JNT_aim_VEC";
+	string $saFKLocators[];
+	$saFKLocators[0] = $saBlendJoints+"_FK_JNT_up_VEC";
+	$saFKLocators[1] = $saBlendJoints+"_FK_JNT_aim_VEC";
+	string $saIKLocators[];
+	$saIKLocators[0] = $saBlendJoints+"_IK_JNT_up_VEC";
+	$saIKLocators[1] = $saBlendJoints+"_IK_JNT_aim_VEC";
+	
+	string $saIKOrientConstrain[];
+	string $saIKAimConstrain[];
+	string $saFKOrientConstrain[];
+	string $saFKAimConstrain[];
+	string $sIKOrientConstraintWeightAttribute;
+	string $sIKAimConstraintWeightAttribute;
+	string $sFKOrientConstraintWeightAttribute;
+	string $sFKAimConstraintWeightAttribute;
+	global string $g_sCONSTBlendChannelName;
+	
+	$saOrientConstrain = `pointConstraint $saIKLocators[0] $saFKLocators[0] $saBlendLocators[0]`;
+	$saAimConstrain = `pointConstraint $saIKLocators[1] $saFKLocators[1] $saBlendLocators[1]`;
+	
+	//get attribute names
+	$sIKOrientConstraintWeightAttribute = jer_GetAttributeName($saOrientConstrain[0], $saIKLocators[0]);
+	$sIKAimConstraintWeightAttribute = jer_GetAttributeName($saAimConstrain[0], $saIKLocators[1]);
+	$sFKOrientConstraintWeightAttribute = jer_GetAttributeName($saOrientConstrain[0], $saFKLocators[0]);
+	$sFKAimConstraintWeightAttribute = jer_GetAttributeName($saAimConstrain[0], $saFKLocators[1]);
+	
+	//set IK constraints to be 1 and FK constraints to be 0
+	//when the control's blend channel is set to 0
+	connectAttr -f ($sControl + "." + $g_sCONSTBlendChannelName) ($saOrientConstrain[0] + "." + $sFKOrientConstraintWeightAttribute);
+	connectAttr -f ($sControl + "." + $g_sCONSTBlendChannelName) ($saAimConstrain[0] + "." + $sFKAimConstraintWeightAttribute);
+	connectAttr -f ($sReverseNode + ".outputX") ($saOrientConstrain[0] + "." + $sIKOrientConstraintWeightAttribute);
+	connectAttr -f ($sReverseNode + ".outputX") ($saAimConstrain[0] + "." + $sIKAimConstraintWeightAttribute);
+}
+
+//////////////////////////////////////////////////////
+//Find name of the attribute on the object that 
+//contains the given substring
+//////////////////////////////////////////////////////
+global proc string jer_GetAttributeName(string $sObjectName, string $sSubstring)
+{
+	string $sAttributeName;
+	string $saAttributeList[];
+	int $iStringSize;
+	int $iNumAttributes;
+	int $i;
+	
+	$saAttributeList = `listAttr -keyable $sObjectName`;
+	$iNumAttributes = `size $saAttributeList`;
+	
+	$iStringSize = 0;
+	do
+	{
+		$sAttributeName = `match $sSubstring $saAttributeList[$i]`;
+		$iStringSize = `size($sAttributeName)`;
+		if($iStringSize > 0)
+		{
+			$sAttributeName = $saAttributeList[$i];
+		}
+		$i++;
+	}while($iStringSize == 0 && $i < $iNumAttributes);
+	
+	return $sAttributeName;
+}
+//////////////////////////////////////////////////////
+//Parse string procedure. 
+//Returns:
+//index of the nodeType in the string
+//-1 = nodeType is not found
+//////////////////////////////////////////////////////
+global proc int jer_ParseString(string $sString[], string $sNodeType)
+{
+int $iCount = 0;
+int $iReturn = -1;
+string $temp;
+string $tempID;
+
+	//////////////////////////////////////////////////////
+	//Parse the returned string, check if any of the connected objects is an ikHandle
+	for ($iCount = 0; $iCount < size($sString); $iCount++)
+	{
+		$temp = $sString[$iCount];
+		$tempID = `nodeType $temp`;
+		if($tempID == $sNodeType)
+		{
+			$iReturn = $iCount;
+			return $iReturn; //found ikHandle
+		}		
+	}
+
+	return $iReturn;
+}
+
+//-------------------------------------------------------------------------------------------------------------------------------------//
+//	PROC:	rtMod_jsOrientJoint
+//
+//		This procedure orients the joints based on the given inputs upAxis and aimAxis
+//
+//	IN:	int[] $aimAxis
+//		int[] $upAxis
+//	
+//-------------------------------------------------------------------------------------------------------------------------------------//
+global proc jer_setOrientJoint ( int $aimAxis[], int $upAxis[], string $joints[])
+{
+	string $joint;
+	
+	// check and see if there are any joints selected.  If not, error out.
+	if (size($joints) == 0)
+		error ("You have no joints defined.\n");		
+
+	// create a progress window to show how long it's going to take
+	int $amount = 0;
+
+	progressWindow
+		-title "Aligning Selected Joints"
+		-progress $amount
+		-status "Aligning Joint: "
+		-isInterruptable true;
+
+	$size = `size ($joints)`;
+	int $count = 1;
+	// now we know that there are joints selected. Now, we step through each of the joints and perform a series of operations
+	// that will align the joint properly.
+	
+	for ($joint in $joints)
+	{
+		// check and see if the dialog has been cancelled
+		if ( `progressWindow -query -isCancelled`) break;
+		
+		$percent = ($count/$size);
+		$amount = $percent * 100;
+		$count++;
+		progressWindow -edit
+			-progress $amount
+			-status ("Aligning Joint: " + $joint);
+		
+		// first get a list of all the children of the joint
+		string $children[0];
+
+		$children = `listRelatives -f -c $joint`;  // this lists all the children of the joint, and their full paths.
+		
+		// make sure they have children first!
+		if (size ($children) > 0)
+		{
+			//  we need to perform the following acts on the children:
+			//	unlock the translation/rotation attributes
+			//	find out which one is the first joint (that's the one we'll orient towards)
+			//	unparent the children while the joint is being oriented
+			//	re-parent the children after the joint is oriented
+			//	re-lock all the attributes that were locked before
+
+			string $child;
+			int $firstJoint = 0;
+			for ($child in $children)
+			{
+				// find out if $child is a joint and if it's the first one.
+				// if it is, make a connection to $joint
+				if ((`nodeType $child` == "joint") && ($firstJoint == 0))
+				{
+					addAttr -ln "jsTmpFirstJoint" -at message $joint;
+					connectAttr ($child + ".message") ($joint + ".jsTmpFirstJoint");
+
+					$firstJoint = 1;
+				}
+				// add an "jsTmpAttrLocked" attribute to $child.  This will be used to store which attributes were locked 
+				if (!`attributeQuery -exists -node $child "jsTmpAttrLocked"`)
+					addAttr -ln "jsTmpAttrLocked" -dt "string" $child;
+
+				// now for each of the attributes, see if it's locked.  If it is, unlock it and store it in jsTmpAttrLocked.
+				string $attrs[] = {"t", "tx", "ty", "tz", "r", "rx", "ry", "rz"};
+				string $at;
+				string $lockedAttrs = "";
+			
+				for ($at in $attrs)
+				{
+					if (`getAttr -l ($child + "." + $at)`)
+					{
+						// if the attribute is locked, unlock it
+						setAttr -l 0 ($child + "." + $at);
+					
+						// store that value in $lockedAttrs
+						$lockedAttrs = ($lockedAttrs + " " + $at);
+					}
+				}
+			
+				// we now have a list of locked attrs, and the children are unlocked.
+				// store those values on jsTmpAttrLocked
+				setAttr -type "string" ($child + ".jsTmpAttrLocked") $lockedAttrs;
+			
+			}
+			// unparent the children, but store their names
+			string $unparentedChildren[0];
+
+			select $children;
+			parent -w $children;
+			
+			$unparentedChildren = `ls -sl`;
+		
+			// now it's time to orient the joint towards the first joint
+			string $con[] = `listConnections ($joint + ".jsTmpFirstJoint")`;
+			string $aimJoint = $con[0];
+
+			// first set the rotations and joint orients to 0 0 0
+			setAttr -l 0 ($joint + ".r");
+			setAttr -l 0 ($joint + ".rx");
+			setAttr -l 0 ($joint + ".ry");
+			setAttr -l 0 ($joint + ".rz");
+
+			setAttr ($joint + ".r") 0 0 0;
+			setAttr ($joint + ".jo") 0 0 0;
+
+			// now create a locator which will go either above or below the joint depending on what direction we chose
+			$pos = `xform -q -ws -rp $joint`;
+		
+			$loc = `spaceLocator`;
+		
+			$tx = $pos[0];
+			$ty = $pos[1];
+			$tz = $pos[2];
+			$direction = 1;
+			if ($direction == 1)
+				$ty = $ty + 5;
+			else
+				$ty = $ty-5;
+
+			// move the locator either above or below the joint
+			move -a -ws $tx $ty $tz $loc[0];
+
+			// now let's create an aimConstraint which aims at $aimJoint and uses $loc[0] as the up vector
+			select $aimJoint $joint;
+
+			$const = `aimConstraint -wut "object" -aim $aimAxis[0] $aimAxis[1] $aimAxis[2] -u $upAxis[0] $upAxis[1] $upAxis[2] -wuo $loc[0]`;
+
+			// now that the constraint is made, we can delete the constraint and the $loc
+			delete $const $loc[0];
+
+			// find the rotations on the joint and put them into the joint orients
+			$r = `getAttr ($joint + ".r")`;
+		
+			setAttr ($joint + ".jo") $r[0] $r[1] $r[2];
+
+			// set the rotations back to 0 0 0
+			setAttr ($joint + ".r") 0 0 0;
+
+			// parent all the children back
+			select $unparentedChildren;
+
+			parent $unparentedChildren $joint;
+			$children = `ls -sl`;
+			// for each child, re-lock the attributes which are supposed to be locked
+			for ($child in $children)
+			{
+				string $attrsToLock = `getAttr ($child + ".jsTmpAttrLocked")`;
+				string $breakApart[0];
+
+				// tokenize $attrsToLock to find all the attributes
+				tokenize ($attrsToLock, " ", $breakApart);
+
+				for ($at in $breakApart)
+				{
+					if (`attributeQuery -exists -node $child $at`)
+					{
+						setAttr -l 1 ($child + "." + $at);
+					}
+				}
+				if (`attributeQuery -exists -node $child "jsTmpAttrLocked"`)
+					deleteAttr -at "jsTmpAttrLocked" $child;
+
+			}
+	
+			// break the connection between .jsTmpFirstJoint and the first joint
+			$con = `listConnections ($joint + ".jsTmpFirstJoint")`;
+			disconnectAttr ($con[0] + ".message") ($joint + ".jsTmpFirstJoint");
+
+			// delete the extra attributes
+			if (`attributeQuery -exists -node $joint "jsTmpFirstJoint"`)
+				deleteAttr -at "jsTmpFirstJoint" $joint;
+		}		
+
+	}
+	progressWindow -endProgress;
+}

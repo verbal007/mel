@@ -1,0 +1,93 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+ jer_pivotAdjustable
+ Created by: Jeremy Sabo on May 13, 2007
+ Desc:	Turns currently selected object into an adjustable pivot control.
+ 	Allows the object's translation values to act as a pivot for rotation.
+	* Note: Will run jer_groupToZero if control's translate values are not zero.
+	
+Requires: jer_groupToZero.mel
+
+//////////////////////////////////////////////////////////////////////////////
+*/
+
+
+///////////////////////////////////////////
+// ~ MAIN ~ PROC
+global proc jer_pivotAdjustable(){
+
+string $sel[] = `ls -sl`;
+
+if (`size $sel` > 1){
+	error "Only select one object at a time.";
+}
+	
+
+float $translate[] = `getAttr ($sel[0]+".translate")`;
+float $rotate[] = `getAttr ($sel[0]+".rotate")`;
+
+print ("translation = "+$translate[0]+"\n");
+print ("rotate= "+$rotate[0]+"\n");
+
+if ($translate[0]+$translate[1]+$translate[2] != 0){
+	warning ("Translation not zeroed. Running jer_groupToZero");
+	jer_groupToZero;
+	select -r $sel[0];
+}else if ($rotate[0]+$rotate[1]+$rotate[2] != 0){
+	warning ("Rotation not zeroed. Running jer_groupToZero");
+	jer_groupToZero;
+	select -r $sel[0];
+}
+
+
+/////////////////////////////
+// PIVOT NULL NAME //
+// Default Naming
+string $pivNull = ($sel[0]+"PivNull");
+string $MD = ($sel[0]+"PivMD");
+// `Escape` Naming
+if (`match "[a-zA-Z0-9]+_[a-zA-Z0-9]+_ctrl$" $sel[0]` != ""){
+	// ** Check Duplicate Naming : Maya returns full path when a object with same name exists
+	$pivNull = `substitute "ctrl$" $sel[0] "pivNull"`;
+	$MD = `substitute "ctrl$" $sel[0] "pivMD"`;
+	if (`gmatch $sel[0] "*|*"`){
+		warning ("Duplicate naming found with selection:"+$sel[0]);
+		$pivNull = `match "|[a-zA-Z0-9_]*$" $pivNull`;
+	}
+
+}
+
+if (`objectType $sel[0]` != "transform"){
+	error "Selection must be a transform node.";
+} else {
+	string $pivNullName[] = `duplicate -po -n $pivNull $sel[0]`;
+	$pivNull = $pivNullName[0];
+}
+
+string $ctrlChildren[] = `listRelatives -c -type "transform" $sel`;
+
+parent $pivNull $sel[0];
+
+if (`size $ctrlChildren` != 0){
+	// Important, otherwise "parent" cmd will parent to current selection if no children exist
+	parent $ctrlChildren $pivNull;
+}
+
+createNode -n $MD multiplyDivide;
+setAttr ($MD+".input2X") -1;
+setAttr ($MD+".input2Y") -1;
+setAttr ($MD+".input2Z") -1;
+
+connectAttr -f ($sel[0]+".translate") ($MD+".input1");
+connectAttr -f ($MD+".output") ($pivNull+".translate");
+
+select -r $sel[0];
+
+} // END PROC
+
+/* BONUS //
+// Testing
+source "/corp/home/jsabo/Desktop/jer_pivotAdjustable.mel";
+jer_pivotAdjustable;
+
+*/

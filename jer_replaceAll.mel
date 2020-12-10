@@ -1,0 +1,27 @@
+//////////////////////////////////////////////////////////////////////////////
+// jer_replaceAll
+// Created by Jeremy Sabo on Dec 16, 2005
+// Desc: Replaces something in something with something else.
+//////////////////////////////////////////////////////////////////////////////
+
+global proc string jer_replaceAll(string $this, string $inThis, string $withThis){
+
+	int $count;
+	string $matches = `match $this $inThis`;
+	int $matchSize = `size($matches)`;
+
+	while ($matchSize > 0){
+		$inThis = `substitute $this $inThis $withThis`;
+	
+		string $matches = `match $this $inThis`;
+		$matchSize = `size($matches)`;
+		
+		$count += 1;
+		// preventing infinite loops
+		if ($count > 299){
+			error "Something must be wrong with this code.  Tell Jer./n";
+						
+		}
+	}
+	return $inThis;
+}

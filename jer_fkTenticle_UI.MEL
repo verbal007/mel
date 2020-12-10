@@ -1,0 +1,257 @@
+//////////////////////////////////////////////////////////////////////////////
+// jer_fkTenticle_UI v1.08
+// Created by: Jeremy Sabo on May 3, 2005
+// Desc: Used to created costom joint chain controls.
+// 		source jer_fkTenticle_UI; jer_fkTenticle_UI;
+//
+// **Dev Notes:  Add "Rotation Order) dropdown to GUI.
+//				placed "clear $jer_fkTentCtrlList" after source statements...
+//				to fix crashing problem.
+//////////////////////////////////////////////////////////////////////////////
+
+
+
+global string $jer_fkTentCtrlList[];
+
+
+source jer_fkTenticle_bldCtrls;
+source jer_fkTenticle_bldCtrls_UI;
+
+clear $jer_fkTentCtrlList;
+
+// === JOINT CHAIN PARENT BUTTON ===      (jntsPar_BTN "Update")
+//////////////////////////////////////////////////////////////////////////////
+global proc jer_jntsPar_CMD(string $jntsPar_TXF){
+	string $selJnt[] = `ls -sl`;
+
+	if (`size($selJnt)` < 1){
+		error "First select joint chain parent";
+	}
+	if (`nodeType $selJnt[0]` != "joint"){	
+		error "ZOIKS\!\! must select the parent joint of a joint chain.";
+	}
+	if (`size($selJnt)` > 1){
+		error "ZOIKS\!\! than one joint selected. Only select parent of the joint chain to be rigged.";
+	}
+	textField -edit -text $selJnt[0] $jntsPar_TXF;
+}
+	
+	
+// === PARENT CTRL BUTTON ===     ($parCtrl_BTN "Update" )
+//////////////////////////////////////////////////////////////////////////////
+global proc jer_parCtrl_CMD(string $parCtrl_TXF){
+	string $sel[] = `ls -sl`;	
+
+	if (`size($sel)` < 1){
+		error "No object selected, parenting under CTRL_GRP transform node."; // ** look for CTRL GRP & create if not exist
+	} else if (`nodeType $sel[0]` != "transform"){	
+		error "ZOIKS\!\!  You must select the control curve to parent the new controls under.  A vis attr will also be added to this control.";
+	}
+	if (`size($sel)` > 1){
+		error "ZOIKS\!\!  More than one object selected.";
+	}		
+	textField -edit -text $sel[0] $parCtrl_TXF;
+}
+
+
+//////////////////////////////////////////////////////////////////////////////
+// CREATE CONTROL CURVES using input of joint name, ctrl type (curve or null)
+// and rotation order. Pos and ori snapes ctrls to joints.  Returns name of
+// curve and group node created.
+global proc string[] jer_createCtrl (string $jnt, string $type, int $rotOrder){
+	float $radius = 3; // DEFAULT RADIUS - Can be modified using "optionVar" to capture user's previous entry.
+	string $ctrl;
+	string $ctrlGrp;
+	string $dudes[];
+	// MAKE CURVES w/ size based on $radius
+	if ($type == "crv"){
+		// ** I love my jaggy curve ** $ctrl = `curve -d 1 -p 2.548705 0.911675 7.844106 -p 4.847924 -0.911675 6.672595 -p 4.847924 0.911675 6.672595 -p 6.672595 -0.911675 4.847924 -p 6.672595 0.911675 4.847924 -p 7.844105 -0.911675 2.548704 -p 7.844105 0.911675 2.548704 -p 8.24778 -0.911675 0 -p 8.24778 0.911675 0 -p 7.844109 -0.911675 -2.548706 -p 7.844109 0.911675 -2.548706 -p 6.672597 -0.911675 -4.847926 -p 6.672597 0.911675 -4.847926 -p 4.847925 -0.911675 -6.672597 -p 4.847925 0.911675 -6.672597 -p 2.548705 -0.911675 -7.844108 -p 2.548705 0.911675 -7.844108 -p 5.82554e-008 -0.911675 -8.247783 -p 5.82554e-008 0.911675 -8.247783 -p -2.548705 -0.911675 -7.844108 -p -2.548705 0.911675 -7.844108 -p -4.847925 -0.911675 -6.672596 -p -4.847925 0.911675 -6.672596 -p -6.672596 -0.911675 -4.847925 -p -6.672596 0.911675 -4.847925 -p -7.844107 -0.911675 -2.548705 -p -7.844107 0.911675 -2.548705 -p -8.247782 -0.911675 -1.40113e-007 -p -8.247782 0.911675 -1.40113e-007 -p -7.844107 -0.911675 2.548705 -p -7.844107 0.911675 2.548705 -p -6.672596 -0.911675 4.847924 -p -6.672596 0.911675 4.847924 -p -4.847924 -0.911675 6.672595 -p -4.847924 0.911675 6.672595 -p -2.548705 -0.911675 7.844106 -p -2.548705 0.911675 7.844106 -p 8.18579e-008 -0.911675 8.247781 -p 8.18579e-008 0.911675 8.247781 -p 2.548705 -0.911675 7.844106 -p 2.548705 0.911675 7.844106 -k 0 -k 1 -k 2 -k 3 -k 4 -k 5 -k 6 -k 7 -k 8 -k 9 -k 10 -k 11 -k 12 -k 13 -k 14 -k 15 -k 16 -k 17 -k 18 -k 19 -k 20 -k 21 -k 22 -k 23 -k 24 -k 25 -k 26 -k 27 -k 28 -k 29 -k 30 -k 31 -k 32 -k 33 -k 34 -k 35 -k 36 -k 37 -k 38 -k 39 -k 40`;
+		string $tempStr[];
+		$tempStr = `circle -c 0 0 0 -nr 0 1 0 -sw 360 -r $radius -d 3 -ut 0 -tol 0.01 -s 8 -ch 0`;
+		$ctrl = $tempStr[0];
+		$ctrlGrp = `group $ctrl`;
+	}else{
+		$ctrl = `group -em`;
+		$ctrlGrp = `group $ctrl`;
+	}
+	
+	setAttr ($ctrl+".rotateOrder") $rotOrder;
+	string $pConst[] = `pointConstraint -offset 0 0 0 -weight 1 $jnt $ctrlGrp`;
+  	string $oConst[] =  `orientConstraint -weight 1 $jnt $ctrlGrp`;
+  	string $delRslt = `delete $pConst[0] $oConst[0]`;
+  	
+	$dudes[0] = $ctrl;
+	$dudes[1] = $ctrlGrp;
+ 	return $dudes;
+} // END PROC jer_createCtrl
+
+// CAPTURE USER INPUT FROM GUI
+global proc jer_bldCtrls_CMD(string $jntsPar_TXF,string $parCtrl_TXF,string $skpJnt_SLDGRP,string $visSuf_TXF,string $jntSuf_TXF){
+	string $jntsPar = `textField -q -text $jntsPar_TXF`;
+	string $parCtrl = `textField -q -text $parCtrl_TXF`;
+	int $skpJnt = 	`intSliderGrp -q -value $skpJnt_SLDGRP`;
+	print $skpJnt;
+	string $visSuf = 	`textField -q -text $visSuf_TXF`;
+	string $jntSuf =	`textField -q -text $jntSuf_TXF`;
+	// ** original line "jer_fkTenticle_bldCtrls "+$jntsPar_TXF+" "+$parCtrl_TXF+" "+$skpJnt_SLDGRP+" "+$visSuf_TXF+" "+$jntSuf_TXF
+	jer_fkTenticle_bldCtrls $jntsPar $parCtrl $skpJnt $visSuf $jntSuf;
+};
+
+
+
+//////////////////////////////////////////////////////////////////////////////
+// === START GUI ===
+//////////////////////////////////////////////////////////////////////////////
+global proc jer_fkTenticle_UI(){
+	
+if (`window -exists jer_fkTenticle_WIN`){
+		deleteUI jer_fkTenticle_WIN;
+} // END - if (`window -exists testWindow`)
+
+window -title "Jeremy\'s FK Tenticle Tweeky" -widthHeight 300 400 jer_fkTenticle_WIN;
+   
+   $b1_command = "ls -sl"; 
+   	 
+// CREATE FORMLAYOUT CONTROLS
+	string $form = `formLayout -numberOfDivisions 100`;
+	
+	// TITLE
+	string $title1 = 	`text -label "Make Your FK Tenticle..." -align "center" -font "fixedWidthFont"`;
+	
+	// JOINT CHAIN PARENT
+	string $s1 = 				`separator -height 10 -style "out"`;
+	string $jntsPar_TXT = 	`text -label "Chain Parent : " -align "left" -w 100`;
+	// string $jntsPar_TXF = 	`textField -text "<joint name>"`;
+	string $jntsPar_TXF = 	`textField -text "<joint name>"`;
+	string $jntsPar_BTN = 				`button -label "Update"
+									-c ("jer_jntsPar_CMD " + $jntsPar_TXF)`; // COMMAND
+	string $s2 = 				`separator -height 10 -style "out"`;
+
+	// PARENT CTRL
+	string $parCtrl_TXT = 	`text -label "Parent Control : " -align "left" -w 100`;
+	//string $parCtrl_TXF = 	`textField -text "<optional control object>"`;
+	string $parCtrl_TXF = 	`textField -text "<optional control object>"`;
+	string $parCtrl_BTN = 	`button -label "Update"
+									-c ("jer_parCtrl_CMD " + $parCtrl_TXF)`; // COMMAND
+	string $parCtrl_SEP = 	`separator -height 10 -style "out"`;
+
+	// SKIP JOINTS
+	string $skpJnt_SLDGRP = `intSliderGrp -label "Skip Joints : " -field true -ad3 3 -cl3 left left left -cw3 100 30 5
+ 										-minValue 1 -maxValue 10
+ 										-fieldMinValue -100 -fieldMaxValue 100	-value 2`;
+	string $skpJnt_SEP =	`separator -height 10 -style "out"`;
+	
+	// JOINT SUFFIX
+	string $jntSuf_TXT = 	`text -label "Joint Suffix : " -align "left" -w 100`;
+	string $jntSuf_TXF = 	`textField -text "_JNT"`; 						
+   string $jntSuf_SEP = 		`separator -height 10 -style "out"`;
+	
+	// VIS ATTR SUFFIX
+	string $bldCtrls_TXT = 	`text -label "Visibility Attr Suffix : " -align "left" -w 100`;
+	string $visSuf_TXF = 	`textField -text "_Vis"`;
+	string $bldCtrls_BTN = 	`button -label "Build Controls..."
+									-c ("jer_bldCtrls_CMD "+$jntsPar_TXF+" "+$parCtrl_TXF+" "+$skpJnt_SLDGRP+" "+$visSuf_TXF+" "+$jntSuf_TXF)`; // COMMAND
+     			
+// ORGANIZE CONTROLS
+	formLayout -edit
+		-attachForm					$title1     "top"		5
+		-attachForm					$title1     "left"		5
+		-attachNone					$title1     "bottom"
+		-attachForm					$title1     "right"	5
+		
+		-attachControl				$s1     "top" 		0	$title1
+		-attachForm					$s1     "left"		5
+		-attachNone					$s1     "bottom"
+		-attachForm					$s1     "right"	5
+		
+		-attachControl				$jntsPar_TXT     "top"		5	$s1
+		-attachForm					$jntsPar_TXT     "left"		5
+		-attachPosition			$jntsPar_TXT     "bottom"	0	21
+		-attachNone					$jntsPar_TXT     "right"
+	        
+		-attachOppositeControl	$jntsPar_TXF     "top"		0	$jntsPar_TXT
+		-attachControl				$jntsPar_TXF     "left"		0	$jntsPar_TXT
+		-attachOppositeControl	$jntsPar_TXF     "bottom"	0	$jntsPar_TXT
+		-attachPosition			$jntsPar_TXF     "right"	0	80
+	        
+		-attachOppositeControl	$jntsPar_BTN     "top" 		0	$jntsPar_TXF
+		-attachControl				$jntsPar_BTN     "left"		0	$jntsPar_TXF
+		-attachOppositeControl	$jntsPar_BTN     "bottom"	0	$jntsPar_TXF
+		-attachForm					$jntsPar_BTN     "right"	5
+		
+		-attachControl				$s2     "top" 		5	$jntsPar_BTN
+		-attachForm					$s2     "left"		5
+		-attachNone					$s2     "bottom"
+		-attachForm					$s2     "right"	5
+
+
+
+		-attachControl				$parCtrl_TXT     "top"		5	$s2
+		-attachForm					$parCtrl_TXT     "left"		5
+		-attachPosition			$parCtrl_TXT     "bottom"	0	35
+		-attachNone					$parCtrl_TXT     "right"
+	        
+		-attachOppositeControl	$parCtrl_TXF     "top"		0	$parCtrl_TXT
+		-attachControl				$parCtrl_TXF     "left"		0	$parCtrl_TXT
+		-attachOppositeControl	$parCtrl_TXF     "bottom"	0	$parCtrl_TXT
+		-attachPosition			$parCtrl_TXF     "right"	0	80
+	        
+		-attachOppositeControl	$parCtrl_BTN     "top" 		0	$parCtrl_TXF
+		-attachControl				$parCtrl_BTN     "left"		0	$parCtrl_TXF
+		-attachOppositeControl	$parCtrl_BTN    "bottom"	0	$parCtrl_TXF
+		-attachForm					$parCtrl_BTN     "right"	5
+		
+		-attachControl				$parCtrl_SEP     "top" 		5	$parCtrl_BTN
+		-attachForm					$parCtrl_SEP     "left"		5
+		-attachNone					$parCtrl_SEP     "bottom"
+		-attachForm					$parCtrl_SEP     "right"	5
+
+
+
+		-attachControl				$skpJnt_SLDGRP    "top" 	5	$parCtrl_SEP
+		-attachForm					$skpJnt_SLDGRP    "left"	5
+		-attachNone					$skpJnt_SLDGRP    "bottom"
+		-attachForm					$skpJnt_SLDGRP    "right"	5
+		
+		-attachControl				$skpJnt_SEP     "top" 		5	$skpJnt_SLDGRP
+		-attachForm					$skpJnt_SEP     "left"		5
+		-attachNone					$skpJnt_SEP     "bottom"
+		-attachForm					$skpJnt_SEP     "right"	5
+		
+		-attachControl				$jntSuf_TXT     "top"		5	$skpJnt_SEP
+		-attachForm					$jntSuf_TXT     "left"		5
+		-attachNone					$jntSuf_TXT     "bottom"
+		-attachNone					$jntSuf_TXT     "right"
+	        
+		-attachOppositeControl	$jntSuf_TXF     "top"		0	$jntSuf_TXT
+		-attachControl				$jntSuf_TXF     "left"	0	$jntSuf_TXT
+		-attachNone					$jntSuf_TXF     "bottom"
+		-attachForm					$jntSuf_TXF     "right"	5
+
+		-attachControl				$jntSuf_SEP    "top" 		5	$jntSuf_TXF
+		-attachForm					$jntSuf_SEP    "left"		5
+		-attachNone					$jntSuf_SEP    "bottom"
+		-attachForm					$jntSuf_SEP    "right"	5
+		
+		-attachControl				$bldCtrls_TXT     "top"		5	$jntSuf_SEP
+		-attachForm					$bldCtrls_TXT     "left"		5
+		-attachNone					$bldCtrls_TXT     "bottom"
+		-attachNone					$bldCtrls_TXT     "right"
+	        
+		-attachOppositeControl	$visSuf_TXF     "top"		0	$bldCtrls_TXT
+		-attachControl				$visSuf_TXF     "left"	0	$bldCtrls_TXT
+		-attachNone					$visSuf_TXF     "bottom"
+		-attachForm					$visSuf_TXF     "right"	5
+		
+		-attachControl				$bldCtrls_BTN     "top" 		5	$visSuf_TXF
+		-attachForm					$bldCtrls_BTN     "left"		5
+		-attachPosition			$bldCtrls_BTN     "bottom"	5	100
+		-attachForm					$bldCtrls_BTN     "right"	5
+
+	$form;
+    
+
+
+showWindow jer_fkTenticle_WIN;
+
+}; //END PROC - jer_fkTenticle_UI

@@ -1,0 +1,22 @@
+//////////////////////////////////////////////////////////////////////////////
+// jer_nameChain
+// Created by: Jeremy Sabo on Mar 24, 2005
+// Desc: Select objects (preferably in Outliner) in the order to be named.
+//       Objects will be numerically numbered.
+// Updates:	** Need to add fullpaths in case of duplicates or error with list of
+//				duplicate nodes.  Fullpaths will change because parent objects are renamed
+//				before renaming children.  Paradox?
+
+global proc jer_nameChain(string $prefix, string $suffix){
+	int $obj;
+	string $newObj;
+	int $nameNum;
+	string $tmpStrAry[] = `ls -sl`;
+	// new line string $tmpStrAry[] = `ls -sl -allPaths`;
+	for ($obj = 0; $obj < size($tmpStrAry); $obj++){
+		$nameNum = $obj+1;
+		$newObj = ($prefix+$nameNum+$suffix);
+		rename $tmpStrAry[$obj] $newObj;
+	};
+	clear $tmpStrAry;
+}

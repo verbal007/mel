@@ -1,0 +1,160 @@
+///////////////////////////////////////////////////////////////////////////
+/* jer_fkTenticle_bldCtrls_UI v1.07
+
+Created by Jeremy Sabo on May 3, 2005
+
+Desc:	Used to created costom joint chain controls.
+		source jer_fkTenticle_UI; jer_fkTenticle_UI;
+
+Notes:  Add "Rotation Order) dropdown to GUI.
+
+*/ 
+///////////////////////////////////////////////////////////////////////////
+
+global proc jer_fkTenticle_bldCtrls_UI (string $ctrlShapeList[])
+{
+	for($i=0; $i<size($ctrlShapeList);$i++)
+		print("ctrlShapeList: "+$ctrlShapeList[$i]+"\n");
+	int $num;
+	string $lightTransforms[];
+	int $longestName;
+	string $ctrlClus[];
+	string $clusList[];
+	string $slider;
+	string $slidList[];
+	global string $jer_fkTentCtrlList[];
+	
+	// Put list of control curves into global variable
+	for ($num=0;$num<`size($ctrlShapeList)`;$num++)
+		$jer_fkTentCtrlList[`size($jer_fkTentCtrlList)`] = $ctrlShapeList[$num];
+	
+	for ($each in $ctrlShapeList ){
+		string $parentList = $each;
+		$lightTransforms[`size $lightTransforms`] = $parentList;
+		
+		$ctrlClus = `cluster $each`;
+		$clusList[`size($clusList)`] = $ctrlClus[1];
+		if ( `size $parentList` > $longestName )
+			$longestName = `size $parentList`;
+	}
+	//////////////
+	
+	if ( `window -exists lightWindowUI` == 1 ){
+		deleteUI lightWindowUI;
+	}
+	int $height=((`size $lightTransforms` * 21) + 35 );
+	int $width = (( $longestName * 6 ) + 1 );
+	
+	if ( `size $lightTransforms` > 10 ){
+			$height = 245;
+			$width = (( ($longestName+12) * 6 ) + 35 );
+	}
+	
+	window
+		-maximizeButton 0
+		-resizeToFitChildren 0
+		-title "Light Window"
+		-iconName "Light Window"
+		-menuBar false
+		-menuBarVisible false
+		-widthHeight $width $height
+		lightWindowUI
+		;
+	
+	if ( `size $lightTransforms` > 10 )
+		scrollLayout -horizontalScrollBarThickness 0 ;
+	
+	$row1 = `rowLayout -numberOfColumns 2 
+				-columnWidth2 (($longestName*6) - 50) 250
+ 				-adjustableColumn 2
+ 				-columnAlign  1 "right"
+ 				-columnAttach 1 "both" 	0
+ 				-columnAttach 2 "right"  0`;
+			
+		$column1 = `columnLayout
+			-columnAttach "both" 0
+			-rowSpacing 1
+			-columnWidth (( $longestName * 6 ) - 50 )`
+			;
+			setParent ..;
+		$column2 = `columnLayout
+			-columnAttach "both" 0
+			-rowSpacing 1
+			//-columnWidth 250`
+			-columnWidth 200`
+			;
+			
+			for ($num = 0; $num < `size($lightTransforms)`;$num++ ){
+				$each = $lightTransforms[$num];
+				setParent $column1;  // NEW STUFF
+					text
+						// ** OLD LINE **  -label $each
+						
+						
+						//-label (`substitute "^[^\_]*" $each ""`)
+						
+						-label (`substitute "[^_]*$" $each ""`)
+						
+						
+						
+						-height 20;
+				setParent $column2;
+					intSliderGrp -field true -ad3 3 -cl3 left left left -cw2 30 5 -height 20
+					// **BACKUP** intSliderGrp -field true -ad3 3 -cl3 left left left -cw3 100 30 5 -height 20
+									-minValue 1 -maxValue 20
+									-fieldMinValue -100 -fieldMaxValue 100	-value 1
+									-annotation "resize control curve" ($each+"_slid");
+					$slidList[`size($slidList)`] = ($each+"_slid");
+					intSliderGrp -e -dragCommand ("jer_fkTentChangeCtrl " + ($clusList[$num]) + " " + ($each+"_slid")) ($each+"_slid"); // ** add jer_fkTentChange
+			}
+
+				button
+				-label "Finalize Controls"
+				-height 25
+				-command "jer_fkTentFinalize";
+
+			showWindow lightWindowUI;
+} // END PROC jer_fkTenticle_bldCtrls_UI
+
+
+global proc jer_fkTentChangeCtrl(string $ctrlClus, string $slider){
+	//scale cluster
+	float $slideScale = 0.25;
+	int $slideVal = `intSliderGrp -q -value $slider`;
+	print ("Scaling "+ $ctrlClus + ($slideVal*$slideScale) + "\n");
+	scale ($slideVal*$slideScale) ($slideVal*$slideScale) ($slideVal*$slideScale) $ctrlClus;			
+}// END GLOBAL PROC jer_fkTentChangeCtrl
+		
+
+global proc jer_fkTentFinalize(){
+	string $control;
+	int $num;
+	string $newCtrlNam;
+	global string $jer_fkTentCtrlList[];
+	for ($num=0;$num<`size($jer_fkTentCtrlList)`;$num++){
+		$control = $jer_fkTentCtrlList[$num];
+		delete -constructionHistory $control;	
+	};
+	
+	clear $jer_fkTentCtrlList;
+	if (`window -exists jer_fkTenticle_WIN`)
+		deleteUI jer_fkTenticle_WIN;
+	if (`window -exists lightWindowUI`)
+		deleteUI lightWindowUI;
+	
+}// END GLOBAL PROC jer_fkTentFinalize
+
+
+
+
+
+
+	/*
+	/////////////////////////////////////////////////
+	// select all CVs of specified curve for scaling. 
+	int $cvCount = `sp_getCV $ctrlCrv`;
+	for ($num = 0;$num < $cvCount;$num++){
+		select -add ($ctrlCrv+".cv["+$num+"]");
+		scale -r $slideVal $slideVal $slideVal;
+	}
+	*/

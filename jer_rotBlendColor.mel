@@ -1,0 +1,38 @@
+////////////////////////////////////////////////////////////////////////
+/*
+jer_rotBlendColor
+
+Created by Jeremy Sabo on Jan 12, 2006
+
+Desc:	Select 1 controlled object, select 2 controller objects
+		and select 1 object to attach blender to.  Creates rotation blender
+		using color blend node.
+		
+Usage:  jer_rotBlendColor BlenderCtrl BlenderAttr SlaveObject Master1Obj Master2Obj
+*/ 
+////////////////////////////////////////////////////////////////////////
+
+global proc jer_rotBlendColor(string $blendCtrl, string $blendAttr, string $slave, string $master1, string $master2){
+	
+	string $blenderNode = `shadingNode -asUtility blendColors`;
+	
+	connectAttr -f ($master2+".rx") ($blenderNode+".color1R");
+	connectAttr -f ($master2+".ry") ($blenderNode+".color1G");
+	connectAttr -f ($master2+".rz") ($blenderNode+".color1B");
+	
+	connectAttr -f ($master1+".rx") ($blenderNode+".color2R");
+	connectAttr -f ($master1+".ry") ($blenderNode+".color2G");
+	connectAttr -f ($master1+".rz") ($blenderNode+".color2B");
+
+	if (!objExists ($blendCtrl+"."+$blendAttr)){
+		addAttr -ln $blendAttr -at double -min 0 -max 1 -dv 0 $blendCtrl;
+	}
+
+	setAttr -e -keyable true ($blendCtrl+"."+$blendAttr);
+	
+	connectAttr -f ($blendCtrl+"."+$blendAttr) ($blenderNode+".blender");
+	
+	connectAttr -f ($blenderNode+".outputR") ($slave+".rx");
+	connectAttr -f ($blenderNode+".outputG") ($slave+".ry");
+	connectAttr -f ($blenderNode+".outputB") ($slave+".rz");
+};

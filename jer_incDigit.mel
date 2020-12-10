@@ -1,0 +1,34 @@
+//////////////////////////////////////////////////////////////////////////////
+/* jer_incDigit
+
+	Created by Jeremy Sabo on Jan 25, 2006
+
+	Desc: Input integer, number to increment by and padding.
+	i.e.:		jer_incDigit 4 1 4
+	returns:	0005
+
+*/
+//////////////////////////////////////////////////////////////////////////////
+global proc string jer_incDigit(int $digit, int $increment, int $padding){
+	// Increment file number
+	/////////////////////////////
+	// Convert current version number to integer and add one.  Convert incremented number to a string for 'size' cmd.
+	
+	int $intDigit = $digit+$increment;
+	string $stringDigit = $intDigit;
+	
+	// The zeros place holder
+	string $zeros = "";
+	int $charCount = `size($stringDigit)`;
+	
+	// How many zeros need to be inserted to fill $digiCount
+	for ($num = $charCount;$num < $padding;$num++){
+		$zeros += "0";
+	};
+	
+	// Concatenate zeros with version number
+	string $newVersion = ($zeros+$stringDigit);
+	
+	return $newVersion;
+
+} // END proc

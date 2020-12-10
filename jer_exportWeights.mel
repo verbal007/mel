@@ -1,0 +1,38 @@
+///////////////////////////////////////////////////////////////////////////
+/* jer_exportWeights
+
+Created by Jeremy Sabo on Oct 23, 2008
+
+Requirements:	cometSaveWeights.mel
+				comet's - libSkin.mel
+
+Desc:	Exports weights from all selected skinned geo
+
+Usage:	Select skinned geometry and run script
+
+*/
+///////////////////////////////////////////////////////////////////////////
+
+
+global proc jer_exportWeights(){
+
+string $sel[] = `ls -sl`;
+string $each;
+string $skin;
+// verify selected objects
+
+for ($each in $sel){
+    // if object is skinned
+    clear $skin;
+    $skin = `libSkin_getSkinFromGeo $each`;
+    if (`size($skin)` == 0){
+        print ("Skipping. "+$each+" is not skinned.");
+    } else {
+		// select points of mesh
+
+    }
+}
+
+
+
+} // END //  global proc jer_exportWeights(){

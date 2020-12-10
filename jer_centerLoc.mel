@@ -1,0 +1,36 @@
+///////////////////////////////////////////////////////////////////////////
+/* jer_centerLoc
+
+Created by Jeremy Sabo on June, 2005
+Modified by Devan Mussato on May 03/07 to run on any number of selections
+
+Desc:	Select any objects or components, run script.
+		Will create a locator centered betweeen the selection.
+*/ 
+///////////////////////////////////////////////////////////////////////////
+
+global proc string jer_centerLoc(){
+
+	string $sel[] = `ls -sl -fl`;
+	float $newPoint[];
+	float $newPointX = 0;
+	float $newPointY = 0;
+	float $newPointZ = 0;
+	
+	for ($i = 0;$i<(`size $sel`);$i++) {
+		
+		float $points[] = `xform -q -ws -t $sel[$i]`;
+		$newPointX += $points[0];
+		$newPointY += $points[1];
+		$newPointZ += $points[2];
+	}
+	
+	$newPoint[0] = $newPointX /(`size $sel`);
+	$newPoint[1] = $newPointY /(`size $sel`);
+	$newPoint[2] = $newPointZ /(`size $sel`);
+
+	string $locator[] = `spaceLocator -n "jer_centerLoc"`;
+	move $newPoint[0] $newPoint[1] $newPoint[2];
+
+	return $locator[0];
+}

@@ -1,0 +1,304 @@
+//////////////////////////////////////////////////////////////////////////////
+/* jer_fkIkLimb
+
+	Created by Jeremy Sabo on Jan 24, 2006
+
+	Requirements: jer_snapePos
+	Joint naming = position_name_suffix
+i.e. L_Shoulder_JNT, L_BearKnee_JNT or R_Wrist_Temp_JNT) is OK
+L_FK_Shoulder_JNT will NOT work.  Script assumes the first part, before the
+underscore is a position identifier.  The second part is the name of the object 
+Anything after the second underscore is assumed to be the suffix (including more underscores).
+
+	Desc: Create FK / IK arm with stretchy
+
+	Modules: - Twist Joint (twist parent or twist child
+		- Create straight blender
+		- Create stretchy
+		- Create aim
+		
+		jer_snapPos
+		rt_IkFkSetup - Rev 2 on Jan 25, 2006
+		jer_rotBlendColor - blender
+
+*/
+//////////////////////////////////////////////////////////////////////////////
+
+//----------------------------------------------------------------------------
+// - PARENT CTRL BUTTON ----------------------------- ($parCtrl_BTN "Update" )
+//----------------------------------------------------------------------------
+global proc jer_parCtrl_CMD(string $parCtrl_TXF){
+	string $sel[] = `ls -sl`;	
+
+	if (`size($sel)` < 1){
+		error "No object selected, parenting under CTRL_GRP transform node."; // ** look for CTRL GRP & create if not exist
+	} else if (`nodeType $sel[0]` != "transform"){	
+		error "ZOIKS\!\!  You must select the control curve to parent the new controls under.  A vis attr will also be added to this control.";
+	}
+	if (`size($sel)` > 1){
+		error "ZOIKS\!\!  More than one object selected.";
+	}		
+	textField -edit -text $sel[0] $parCtrl_TXF;
+}
+
+//----------------------------------------------------------------------------
+//-- Grab user input ---------------------------------------------------------
+//----------------------------------------------------------------------------
+global proc jer_XtremeLimb_Main(){
+	// identify top joint of limb chain
+	string $limbTop = ;
+	
+	// identify middle joint of limb chain
+	string $limbMid = ;
+	
+	// identify end joint of limb chain
+	string $limbEnd = ;
+	
+	// verify that Y is pointing down the bone.
+
+
+}// END proc jer_XtremeLimb_Main
+// ---------------------------------------------------------------------------
+
+
+//----------------------------------------------------------------------------
+//-- Query User input and verify ---------------------------------------------
+//----------------------------------------------------------------------------
+global proc jer_XtremeLimberizor(){
+
+// Delete window if it already exists
+if (`window -exists jer_XtremeLimb_WIN`){
+		deleteUI jer_XtremeLimb_WIN;
+} // END - if (`window -exists testWindow`)
+
+window -title "Jer\'s Xtr3me LimB0riz0r" -widthHeight 300 400 jer_XtremeLimb_WIN;
+   
+   // CREATE FORMLAYOUT CONTROLS
+	string $form = `formLayout -numberOfDivisions 100`;
+	
+	// TITLE
+	string $title1 = 	`text -label "Let\'s make an arm, shall we?" -align "center" -font "fixedWidthFont"`;
+	
+	// JOINT CHAIN PARENT
+	string $s1 = 				`separator -height 10 -style "out"`;
+	string $jntsPar_TXT = 	`text -label "Chain Parent : " -align "left" -w 100`;
+	// string $jntsPar_TXF = 	`textField -text "<joint name>"`;
+	string $jntsPar_TXF = 	`textField -text "<joint name>"`;
+	string $jntsPar_BTN = 				`button -label "Update"
+									-c ("jer_jntsPar_CMD " + $jntsPar_TXF)`; // COMMAND
+	string $s2 = 				`separator -height 10 -style "out"`;
+
+	// PARENT CTRL
+	string $parCtrl_TXT = 	`text -label "Parent Control : " -align "left" -w 100`;
+	//string $parCtrl_TXF = 	`textField -text "<optional control object>"`;
+	string $parCtrl_TXF = 	`textField -text "<optional control object>"`;
+	string $parCtrl_BTN = 	`button -label "Update"
+									-c ("jer_parCtrl_CMD " + $parCtrl_TXF)`; // COMMAND
+	string $parCtrl_SEP = 	`separator -height 10 -style "out"`;
+
+	// SKIP JOINTS
+	string $skpJnt_SLDGRP = `intSliderGrp -label "Skip Joints : " -field true -ad3 3 -cl3 left left left -cw3 100 30 5
+ 										-minValue 1 -maxValue 10
+ 										-fieldMinValue -100 -fieldMaxValue 100	-value 2`;
+	string $skpJnt_SEP =	`separator -height 10 -style "out"`;
+	
+	// JOINT SUFFIX
+	string $jntSuf_TXT = 	`text -label "Joint Suffix : " -align "left" -w 100`;
+	string $jntSuf_TXF = 	`textField -text "_JNT"`; 						
+   string $jntSuf_SEP = 		`separator -height 10 -style "out"`;
+	
+	// VIS ATTR SUFFIX
+	string $bldCtrls_TXT = 	`text -label "Visibility Attr Suffix : " -align "left" -w 100`;
+	string $visSuf_TXF = 	`textField -text "_Vis"`;
+	string $bldCtrls_BTN = 	`button -label "Build Controls..."
+									-c ("jer_bldCtrls_CMD "+$jntsPar_TXF+" "+$parCtrl_TXF+" "+$skpJnt_SLDGRP+" "+$visSuf_TXF+" "+$jntSuf_TXF)`; // COMMAND
+     			
+// ORGANIZE CONTROLS
+	formLayout -edit
+		-attachForm					$title1     "top"		5
+		-attachForm					$title1     "left"		5
+		-attachNone					$title1     "bottom"
+		-attachForm					$title1     "right"	5
+		
+		-attachControl				$s1     "top" 		0	$title1
+		-attachForm					$s1     "left"		5
+		-attachNone					$s1     "bottom"
+		-attachForm					$s1     "right"	5
+		
+		-attachControl				$jntsPar_TXT     "top"		5	$s1
+		-attachForm					$jntsPar_TXT     "left"		5
+		-attachPosition			$jntsPar_TXT     "bottom"	0	21
+		-attachNone					$jntsPar_TXT     "right"
+	        
+		-attachOppositeControl	$jntsPar_TXF     "top"		0	$jntsPar_TXT
+		-attachControl				$jntsPar_TXF     "left"		0	$jntsPar_TXT
+		-attachOppositeControl	$jntsPar_TXF     "bottom"	0	$jntsPar_TXT
+		-attachPosition			$jntsPar_TXF     "right"	0	80
+	        
+		-attachOppositeControl	$jntsPar_BTN     "top" 		0	$jntsPar_TXF
+		-attachControl				$jntsPar_BTN     "left"		0	$jntsPar_TXF
+		-attachOppositeControl	$jntsPar_BTN     "bottom"	0	$jntsPar_TXF
+		-attachForm					$jntsPar_BTN     "right"	5
+		
+		-attachControl				$s2     "top" 		5	$jntsPar_BTN
+		-attachForm					$s2     "left"		5
+		-attachNone					$s2     "bottom"
+		-attachForm					$s2     "right"	5
+
+
+
+		-attachControl				$parCtrl_TXT     "top"		5	$s2
+		-attachForm					$parCtrl_TXT     "left"		5
+		-attachPosition			$parCtrl_TXT     "bottom"	0	35
+		-attachNone					$parCtrl_TXT     "right"
+	        
+		-attachOppositeControl	$parCtrl_TXF     "top"		0	$parCtrl_TXT
+		-attachControl				$parCtrl_TXF     "left"		0	$parCtrl_TXT
+		-attachOppositeControl	$parCtrl_TXF     "bottom"	0	$parCtrl_TXT
+		-attachPosition			$parCtrl_TXF     "right"	0	80
+	        
+		-attachOppositeControl	$parCtrl_BTN     "top" 		0	$parCtrl_TXF
+		-attachControl				$parCtrl_BTN     "left"		0	$parCtrl_TXF
+		-attachOppositeControl	$parCtrl_BTN    "bottom"	0	$parCtrl_TXF
+		-attachForm					$parCtrl_BTN     "right"	5
+		
+		-attachControl				$parCtrl_SEP     "top" 		5	$parCtrl_BTN
+		-attachForm					$parCtrl_SEP     "left"		5
+		-attachNone					$parCtrl_SEP     "bottom"
+		-attachForm					$parCtrl_SEP     "right"	5
+
+
+
+		-attachControl				$skpJnt_SLDGRP    "top" 	5	$parCtrl_SEP
+		-attachForm					$skpJnt_SLDGRP    "left"	5
+		-attachNone					$skpJnt_SLDGRP    "bottom"
+		-attachForm					$skpJnt_SLDGRP    "right"	5
+		
+		-attachControl				$skpJnt_SEP     "top" 		5	$skpJnt_SLDGRP
+		-attachForm					$skpJnt_SEP     "left"		5
+		-attachNone					$skpJnt_SEP     "bottom"
+		-attachForm					$skpJnt_SEP     "right"	5
+		
+		-attachControl				$jntSuf_TXT     "top"		5	$skpJnt_SEP
+		-attachForm					$jntSuf_TXT     "left"		5
+		-attachNone					$jntSuf_TXT     "bottom"
+		-attachNone					$jntSuf_TXT     "right"
+	        
+		-attachOppositeControl	$jntSuf_TXF     "top"		0	$jntSuf_TXT
+		-attachControl				$jntSuf_TXF     "left"	0	$jntSuf_TXT
+		-attachNone					$jntSuf_TXF     "bottom"
+		-attachForm					$jntSuf_TXF     "right"	5
+
+		-attachControl				$jntSuf_SEP    "top" 		5	$jntSuf_TXF
+		-attachForm					$jntSuf_SEP    "left"		5
+		-attachNone					$jntSuf_SEP    "bottom"
+		-attachForm					$jntSuf_SEP    "right"	5
+		
+		-attachControl				$bldCtrls_TXT     "top"		5	$jntSuf_SEP
+		-attachForm					$bldCtrls_TXT     "left"		5
+		-attachNone					$bldCtrls_TXT     "bottom"
+		-attachNone					$bldCtrls_TXT     "right"
+	        
+		-attachOppositeControl	$visSuf_TXF     "top"		0	$bldCtrls_TXT
+		-attachControl				$visSuf_TXF     "left"	0	$bldCtrls_TXT
+		-attachNone					$visSuf_TXF     "bottom"
+		-attachForm					$visSuf_TXF     "right"	5
+		
+		-attachControl				$bldCtrls_BTN     "top" 		5	$visSuf_TXF
+		-attachForm					$bldCtrls_BTN     "left"		5
+		-attachPosition			$bldCtrls_BTN     "bottom"	5	100
+		-attachForm					$bldCtrls_BTN     "right"	5
+
+	$form;
+
+showWindow jer_XtremeLimb_WIN;
+	
+}// END proc jer_XtremeLimberizor
+// ---------------------------------------------------------------------------
+
+
+//----------------------------------------------------------------------------
+// -- Create FK and IK versions of bones isolated chains ---------------------
+//----------------------------------------------------------------------------
+
+//----------------------------------------------------------------------------
+// -- Setup FK stretchy limb (proc) parent, mid, child  w/ wrist control -----
+// Create FK controls for shoulder and elbow
+//----------------------------------------------------------------------------
+
+
+//----------------------------------------------------------------------------
+// -- Create individual FK Control -------------------------------------------
+// Assumes that the section following the first "_" is the name of the object
+// and control.
+//----------------------------------------------------------------------------
+
+
+global proc jer_ctrlFK(string $joint){
+	string $buffer;
+	tokenize $joint "_" $buffer;
+	
+	string $LorR = $buffer[0];
+	string $part = $buffer[1];
+	
+	string $FKJoints;
+	
+	string $ctrlSuf = "C"; // Control suffix:  IDs as a control curve.  "Ctrl" or "C"
+	string $suffix = ("_FK_"+$ctrlSuf)  // Suffix:  Complete suffix following object name.
+	
+	// create FK joint chain
+	$FKJoints = DuplicateJointChain($saBlendJoints, ($part+"_");
+	// delete children of last joint in limb
+	
+	/*
+	string $shoulderCtrl = `circle -c 0 0 0 -nr 0 1 0 -sw 360 -r 1 -d 3 -ut 0 -tol 0.01 -s 8 -ch 0`;
+	string $shoulderCtrlGrp = `group -n ($LorR+"_"+$limbParent+$suffix) $shoulderCtrl;
+	*/
+} // END global proc jer_ctrlFK
+
+
+//----------------------------------------------------------------------------
+// -- Setup entire FK limb ---------------------------------------------------
+//----------------------------------------------------------------------------
+global proc jer_limbFK(string $LorR, string $limbParent, string $limbMid, string $limbChild){
+
+
+} // END global proc jer_limbFK
+
+///////////////////////////
+// Setup IK stretchy limb (proc) parent, mid, child
+
+
+///////////////////
+// Created Blenders (proc)
+
+// Create IK handle
+
+// Create IK stretch
+
+
+// create distanceBetween
+
+// grab current translate values for elbow and wrist
+
+// 
+
+// ** string $newMD = `createNode multiplyDivide`;
+
+// New joint translate = old translate * (new arm length / old arm length).
+
+// Create FK stretch
+
+
+
+
+
+
+
+// create aim blender locators for shoulder.  Parent one set under UTL node (blender), one set under FK shoulder
+// and one under IK shoulder.  Point constrain blender locators to FK & IK locators
+pointConstraint -offset 0 0 0 -weight 1;
+
+// aim bound shoulder joint at point constrainted locators  (aimConstraint)
+aimConstraint -offset 0 0 0 -weight 1 -aimVector 0 1 0 -upVector 0 0 -1 -worldUpType "object" -worldUpObject shoulderUp_blend_LOC;
+

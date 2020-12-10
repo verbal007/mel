@@ -1,0 +1,235 @@
+//////////////////////////////////////////////////////////////////////////////
+// jer_fkTenticle_bldCtrls v1.08
+// Created by: Jeremy Sabo on May 16, 2005
+// Desc: Creates FK Tenticle controls for selected joint chain.
+// NOTE: Requires sp_getCV.mel to function.
+//////////////////////////////////////////////////////////////////////////////
+
+global proc jer_fkTenticle_bldCtrls(string $jntsPar,string $parCtrl,int $skpJnt,string $visSuf,string $jntSuf){
+	print "START BUILDING OF CONTROLS\n";
+	int $num = 0;		// temp counter
+	int $revNum = 0;	// temp reverse counter
+	float $tmpFloat;	// temp Float
+	float $rndFloat;	// temp rounded Float
+	int $tmpInt;
+	string $tmpStr;
+	string $tmpStrAry[]; 	// temp string Array
+	int $tmpInt;
+	string $each;
+	float $compare;	// to compare float to ceiled float
+	
+	string $children[]; 	// listRelatives of joint chain
+	string $jntChain[]; 	// list of joints (decending order)
+	string $jnt; 			// current joint in $jointChain
+	string $visAttr;
+	string $dudes[];                              
+	string $linkList[];
+	string $obj;
+	string $objGrp;
+	string $oldCtrl;
+	
+	string $jntsPar;
+	string $parList1[]; 	// list of curve transforms
+	string $parList2[]; 	// list of group transforms, placed above curve transforms
+	string $ctrlList[]; 	// list of created control curves
+	string $ctrlShapeList[]; // list of created control curve shapes
+	string $nullList[];	// list of null objects
+	
+	string $type; // "nul" or "crv"
+	int $rotOrder = 3;
+	
+	string $visCtrl;
+	string $visAttr;
+	
+	// Naming conventions
+	string $objLbl = "_CTRL";
+	string $nullLbl = "_NUL";
+	string $objGrpLbl = "_ORI_GRP";
+
+	// CREATION OF VIS ATTRIBUTE on parent control.
+	if (size($jntsPar) == 0 || $jntsPar == "<joint name>"){
+		error "\nNo Chain Parent specified.\n";
+	} else if (size($parCtrl) == 0 || $parCtrl == "<optional control object>"){
+		print "\nNo parent control specified. Visibility attribute will not be created.";
+		
+	} else {	
+		print ("\nSetting up visability attribute on "+$jntsPar+"\n");
+		$visAttr = `substitute ("1"+$jntSuf) $jntsPar $visSuf`;	
+		addAttr -ln $visAttr -at long -min 0 -max 1 -dv 1 $parCtrl;
+		setAttr -e -keyable true ($parCtrl+"."+$visAttr);
+	};
+	
+	// SETUP CONTROL CURVES ON JOINTS
+	///////////////////////////////////////////////////////////////////////////
+	// List child joints.
+	$children = `listRelatives -allDescendents -typ "joint" $jntsPar`;
+	
+	// CREATE JOINT CHAIN LIST that contains all joints in the correct order.
+	// Reverses order of children[] array.
+	// Note: listRelatives default list order is child to parent.
+	///////////////////////////////////////////////////////////////////////////	
+	$jntChain[0] = $jntsPar;
+	print "create joint chain list\n";  //TRACKER
+	for ($revNum = (`size($children)`)-1; $revNum >= 0; $revNum--){
+		$num++;
+		$jntChain[$num] = $children[$revNum];
+	}
+	for ($num = 0; $num < `size($jntChain)`;$num++)
+		print ("Joint "+$num+" "+$jntChain[$num]+"\n");
+	
+	// Create list of CONTROLS to have curves created for.
+	print "create list of controls \n";  //TRACKER
+	$tmpInt = 0;  // How many controls created.
+	print $jntChain;
+	for ($num = 0;$num < `size($jntChain)`-1;$num++){
+		
+		$tmpFloat = ($num+0.00)/$skpJnt; // IMPORTANT: By adding 1.00, it forces maya to treat as float.
+		$rndFloat = `ceil $tmpFloat`;
+	
+		// ** for testing print ("\nCeiled TempFloat is "+ $rndFloat);
+		// ** for testing print "\n";
+		// ** for testing print ("TempFloat is "+$tmpFloat+"\n");
+		setAttr ($jntChain[$num]+".rotateOrder") $rotOrder;
+		//////////////////////////////////////////////////////////////////////
+		//  CREATE, RENAME & CONNECT CTRL & NULL CURVES
+		if ($rndFloat == $tmpFloat){		// controlled joints
+			$tmpInt++;
+			$type = "crv";
+			
+			$dudes = `jer_createCtrl $jntChain[$num] $type $rotOrder`;
+
+			$tmpStr = (`match "^[^\_]*" $jntChain[$num]`+"_"+($tmpInt+$objLbl));
+
+			$dudes[0] = `rename $dudes[0] $tmpStr`;
+			$tmpStr = 	`substitute $jntSuf $jntChain[$num] $objGrpLbl`;
+			$dudes[1] = `rename $dudes[1] $tmpStr`;
+			
+			// ** Create and Connect Vis Attr.
+			if ($tmpFloat = 0){
+				$visAttr = (`match "^[^\_]*" $jntChain[$num]`+"_"+($visSuf));
+				addAttr -ln $visAttr -at long -min 0 -max 1 -dv 1 $parCtrl;
+				connectAttr ($parCtrl+"."+$visAttr) ($dudes[0] + ".visibility");
+				parent $jntChain[$num] $parCtrl; // ** Untested line				
+			};
+			
+			$ctrlList[`size($ctrlList)`] = $dudes[0];			
+			$tmpStrAry = `listRelatives -s $dudes[0]`;
+			$ctrlShapeList[`size($ctrlShapeList)`] = $tmpStrAry[0];
+			$obj = $dudes[0]; // control to drive joints and controls
+			connectAttr -f ($obj+".rotate") ($jntChain[$num]+".rotate");
+
+		}else{  													// secondary joints
+			$type = "nul";
+			
+			$dudes = 	`jer_createCtrl $jntChain[$num] $type $rotOrder`;
+			
+			$tmpStr = 	`substitute $jntSuf $jntChain[$num] $nullLbl`;
+			$dudes[0] = `rename $dudes[0] $tmpStr`;
+			$tmpStr = 	`substitute $jntSuf $jntChain[$num] $objGrpLbl`;
+			$dudes[1] = `rename $dudes[1] $tmpStr`;
+			connectAttr -f ($obj+".rotate") ($dudes[0]+".rotate");
+			connectAttr -f ($dudes[0]+".rotate") ($jntChain[$num]+".rotate");			
+						
+		};
+		
+		// Lists of tranforms to be parented to one another.
+		$parList1[`size($parList1)`] = $dudes[0];
+		$parList2[`size($parList2)`] = $dudes[1];		
+	};
+		
+	// PARENT CONTROLS
+	if (size($parCtrl) != 0 || $parCtrl != "<optional control object>"){
+		parent $parList2[0] $parCtrl;
+		connectAttr -f ($parCtrl+"."+$visAttr) ($parList2[0]+".visibility");	
+	};
+	
+	for ($num = 0;$num <(`size($parList2)`)-1;$num++){
+		// ** for testing print ("parent "+$parList2[($num+1)]+" to "+ $parList1[$num]+"\n"); 
+		parent $parList2[($num+1)] $parList1[$num];
+	
+	}
+	$tmpFloat = 0.00;
+	for ($each in $parList1){
+		$tmpFloat = ($tmpFloat+1.00); // IMPORTANT: By adding 1.00, it forces maya to treat as float.
+		$compare = $tmpFloat/$skpJnt;
+		$rndFloat = `ceil $compare`;
+		if ($rndFloat == $compare){						
+			// LOCK NULL TRANSFORMS
+			print ("Locking ALL - "+$each+"\n");
+			setAttr -lock true -keyable false ($each+".tx");
+			setAttr -lock true -keyable false ($each+".ty");
+			setAttr -lock true -keyable false ($each+".tz");
+			setAttr -lock true -keyable false ($each+".sx");
+			setAttr -lock true -keyable false ($each+".sy");
+			setAttr -lock true -keyable false ($each+".sz");
+			setAttr -lock true -keyable false ($each+".rx");
+			setAttr -lock true -keyable false ($each+".ry");
+			setAttr -lock true -keyable false ($each+".rz");
+			setAttr -lock true -keyable false ($each+".v");
+		} else {
+			// LOCK CONTROLS
+			print ("Locking Trans - "+$each+"\n");
+			setAttr -lock true -keyable false ($each+".tx");
+			setAttr -lock true -keyable false ($each+".ty");
+			setAttr -lock true -keyable false ($each+".tz");
+			setAttr -lock true -keyable false ($each+".sx");
+			setAttr -lock true -keyable false ($each+".sy");
+			setAttr -lock true -keyable false ($each+".sz");
+			setAttr -lock true -keyable false ($each+".v");
+		}
+	}
+	for ($each in $parList2){
+		// LOCK GROUPS
+		print ("Locking - "+$each+"\n");
+		setAttr -lock true -keyable false ($each+".tx");
+		setAttr -lock true -keyable false ($each+".ty");
+		setAttr -lock true -keyable false ($each+".tz");
+		setAttr -lock true -keyable false ($each+".sx");
+		setAttr -lock true -keyable false ($each+".sy");
+		setAttr -lock true -keyable false ($each+".sz");
+		setAttr -lock true -keyable false ($each+".rx");
+		setAttr -lock true -keyable false ($each+".ry");
+		setAttr -lock true -keyable false ($each+".rz");
+		setAttr -lock true -keyable false ($each+".v");
+	}
+	
+	// Create Controls
+	source jer_fkTenticle_bldCtrls_UI;
+	jer_fkTenticle_bldCtrls_UI $ctrlShapeList;
+
+	// ** for testing print "\nParent List";
+	// ** for testing print $parList1;
+	// ** for testing print "\nGRP in Parent List";
+	// ** for testing print $parList2;
+	
+	/*
+	
+	///////////////  ** edit
+	// If it's not the first obj, parent it under the previous obj created.
+		if ($num == 0){
+			if (size($sel) == 2){
+				connectAttr ($visCtrl+"."+$visAttr) ($obj + ".visibility");
+				parent $dudes[1] $visCtrl; // ** Untested line
+			}else{
+				parent $dudes[1] CTRL_GRP;
+			}
+						
+			// print $cmd;
+		}else if ($num > 0){
+			parent -a $objGrp $oldCtrl;
+		}
+		
+		rename $dudes[0] $obj;  // do this last, after $linkList & $ctrlList are completed.
+		rename $dudes[1] $objGrp;
+	//////////////  ** edit
+		
+	
+	
+	// FINAL RUN ON RIG SETUP
+	for ($tmpStr in $jntChain){
+		if 		
+		setAttr ($tmpStr+".rotateOrder") $rotOrder;
+			
+	*/	 		
+
+}; // end proc

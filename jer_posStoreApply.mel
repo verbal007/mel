@@ -1,0 +1,114 @@
+///////////////////////////////////////////////////////////////////////////
+/* jer_posStoreApply
+
+Created by Jeremy Sabo on Oct 28, 2008
+
+Desc:	Stores position and orientation of current selection.
+
+Usage:  To store, select object and run script.
+		To apply, select object & attribue channels to apply transformations to. Run scirpt.
+
+*/
+///////////////////////////////////////////////////////////////////////////
+
+global proc jer_posStoreApply(int $apply){
+
+    string $each;
+	string $sel[] = `ls -sl`;
+    string $obj;
+    float $pos[];  // 3 floats for translation
+    float $ori[];  // 3 floats for rotation values
+	global string $jer_posStoreApply_pos[];  //  List of stored translation values
+    global string $jer_posStoreApply_ori[];  //  List of stored rotation values
+
+if ($apply == 0){
+    //////////////////////////////////////////////////////////////////////////////
+    // STORE /////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////
+	clear $jer_posStoreApply_pos;
+    clear $jer_posStoreApply_ori;
+
+    for ($obj in $sel){
+		$pos = `xform -q -rp -ws $obj`;
+		$ori = `xform -q -ro -ws $obj`;
+		$jer_posStoreApply_pos[`size($jer_posStoreApply_pos)`] = ($pos[0]+","+$pos[1]+","+$pos[2]);
+		$jer_posStoreApply_ori[`size($jer_posStoreApply_ori)`] = ($ori[0]+","+$ori[1]+","+$ori[2]);
+	}
+	
+	print $jer_posStoreApply_pos;
+
+
+} else {  // if ($apply == 0)
+    //////////////////////////////////////////////////////////////////////////////
+    // APPLY /////////////////////////////////////////////////////////////////////
+    //////////////////////////////////////////////////////////////////////////////
+    int $i;
+	int $srcCount;
+    int $destCount;
+    string $buffer[];
+	string $oriAttrs[] = {"rx","ry","rz"};
+    string $posAttrs[] = {"tx","ty","tz"};
+    string $channelSel[] = `channelBox -q -selectedMainAttributes mainChannelBox`;
+    int $posApply;  // Should tranlsation be applied?
+	int $oriApply;  // Should rotation be applied?
+	int $applyAll = 0;  // Selected doesn't match stored?  Apply first stored value to all selected.
+    if (`size $channelSel` == 0){
+		warning "Rotate and/or a translate channels not selected. Applying to all.";
+		$posApply = 1;
+		$oriApply = 1;
+    } else {
+	    // What to apply?
+	    for ($each in $channelSel){
+	        if ( stringArrayContains($each, $posAttrs) ){
+	    		$posApply = 1;
+	    	} else if ( stringArrayContains($each, $oriAttrs) ){
+				$oriApply = 1;
+		 	} else {
+	        	error "You got something selected, but it's not a rotate or translate channel.";
+	   		}
+		}
+	}
+
+	// Selected count match stored?
+	if (`size($sel)` != `size($jer_posStoreApply_pos)`){
+		warning "Selected object count doesn't match stored count. Applying first stored value to all selected.";
+		$applyAll = 1;
+	}
+
+	// Apply
+    for ($i = 0; $i < `size($sel)` ; $i++){
+		if ($applyAll == 1){
+			//$obj = $sel[0];
+			$srcCount = 0;
+		} else {
+			//$obj = $sel[$i];
+			$srcCount = $i;
+		}
+		if ($posApply == 1){
+			clear $buffer;
+		 	tokenize $jer_posStoreApply_pos[$srcCount] "," $buffer;
+		 	$pos[0] = $buffer[0];
+		 	$pos[1] = $buffer[1];
+		 	$pos[2] = $buffer[2];
+			xform -ws -t $pos[0] $pos[1] $pos[2] $sel[$i];
+		}
+	    if ($oriApply == 1){
+			clear $buffer;
+			tokenize $jer_posStoreApply_ori[$srcCount] "," $buffer;
+			$ori[0] = $buffer[0];
+			$ori[1] = $buffer[1];
+			$ori[2] = $buffer[2];
+			xform -ws -ro $ori[0] $ori[1] $ori[2] $sel[$i];
+			print $srcCount;
+
+		}
+	}
+
+
+}
+
+
+
+
+
+}; // END //  global proc jer_posStoreApply(int $apply){

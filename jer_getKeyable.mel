@@ -1,0 +1,15 @@
+// jer_getKeyable
+// created by Jeremy Sabo on Sep 8th
+
+global proc jer_getKeyable() {
+
+	string $sel = `ls -sl`;
+	for ($each in $sel){
+		string $isKeyable[] = getAttr $each;
+		string $isLocked[] = getAttr $each;
+	}
+	
+	
+	
+	
+} //END PROC jer_getKeyable

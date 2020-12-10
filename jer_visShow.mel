@@ -1,0 +1,47 @@
+//////////////////////////////////////////////////////////////////////////////
+/* jer_visShow
+
+	Created by Jeremy Sabo on Jan 24, 2006
+
+	Desc: Details: Finds all objects in current scene that are hidden, ignoring
+	connectioned "visibility" attributes).  A list is then generated and the
+	objects are hidden and the objects are unlocked and unhidden.
+	If this script is run again, the list will be looked through and all
+	objects that were previously hidden will become hidden again and locked.
+	The list is then cleared and toggle reset.
+
+*/
+//////////////////////////////////////////////////////////////////////////////
+
+global proc jer_visShow(){
+	global string $jer_visShow_hidden[];
+	string $each;
+	string $hideList[];
+	string $connections[];
+
+	// Does a list of previously hidden objects already exist?  If not...
+	if (`size($jer_visShow_hidden)` == 0){
+		// list invisible transform nodes
+		$hideList = `ls -invisible -type "transform"`;
+		
+		for ($each in $hideList){
+			print ($each+"\n");
+			$connections = `listConnections -source true ($each+".v")`;
+			if (`size $connections` == 0){
+				
+				//if (`getAttr -settable ($each+".v")`){
+					$jer_visShow_hidden[`size($jer_visShow_hidden)`] = $each;
+					setAttr -lock false ($each+".v");
+					setAttr ($each+".v") 1;
+				//}
+			}
+		}
+	}else{		
+		for ($each in $jer_visShow_hidden){
+			if (`getAttr -settable ($each+".v")`){
+				setAttr -lock true ($each+".v") 0;
+			}
+		}
+		clear $jer_visShow_hidden;
+	}
+} // END proc

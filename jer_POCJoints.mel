@@ -1,0 +1,331 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+// jer_POCJoints
+
+Created by Jeremy Sabo on Jan 02, 2006
+
+Desc:  Builds stretchy spine from NURBS curve.
+
+Requirements: jsOrientJointUI.mel, RS_recreateJoints.mel, RS_jLength.mel, RS_copyPos.mel
+
+Assume: Joints are named "Spine_1_JNT", "Spine_2_JNT", etc. or "Neck_1_JNT", etc
+	Each joint chain will contain a unique prefix name.
+
+Usage: Select curve to build spine on and run script.  Make sure that
+	parameterization has 0 at what will be the root of the spine.
+	** Currently the "Select Base", "Select Tip" and "connect twist" buttons do nothing.
+	
+Updates: Created "Stretch Plus":  Additional point contraint added, per joint, moving the UPV group's 
+	pivot along with it's aimconstrained joint.  Increased stretchiness by 100% & minimizes flipping.
+	However, chain cannot bend as far in the inverse direction.
+	
+Recommended Updates:	Reverse zup & ydown for when the apex of the curve is further foward in Z,
+	or lower in Y. Will help with situations where spine bends in reverse.
+	
+//////////////////////////////////////////////////////////////////////////////
+*/
+
+source jsOrientJointUI;
+
+global proc jer_POCJoints_getObj(string $obj_TXF){
+	string $selObj[] = `ls -sl`;
+
+	if (`size($selObj)` < 1){
+		error "First select Base control.";
+	}
+	if (`nodeType $selObj[0]` != "transform"){	
+		error "ZOIKS\!\! must select a object to add.";
+	}
+	if (`size($selObj)` > 1){
+		error "ZOIKS\!\! than one object selected. Only select one object.";
+	}
+	textField -edit -text $selObj[0] $obj_TXF;
+}
+
+global proc jer_POCJoints(){
+	
+	string $jntOrient_chk;
+	string $stretchPlus_chk;
+		
+	///////////////////////////////////
+	// UI creation
+	$win = "jer_spineUI";
+		if (`window -exists $win`)
+			deleteUI $win;
+	
+	window 
+			-title "Back Setup" 
+			-w 350
+			-h 350
+			jer_spineUI;
+		
+	columnLayout
+		-rs  15
+		-co left 10;
+		
+	intSliderGrp -label "Joint Count" -v 7 -min 3 -max 24 -field true -columnWidth 2 20 numJointsISG;	
+		
+	// rowLayout -numberOfColumns 2 -cw2 70 70;
+	rowColumnLayout  -numberOfColumns 2 
+ 						  -columnWidth 1 150 
+ 						  -columnWidth 2 150
+ 						  -columnSpacing 1 5;
+ 		
+ 		$jntOrient_chk = `checkBox -label "Standing" -align "left"`;
+ 		$stretchPlus_chk = `checkBox -label "Add \"Stretch Plus\"" -align "left"`;
+ 		
+ 		string $createChain_btn = `button -l "create joint chain" -w 150 -align center`;
+ 		button -e -c ("jer_POCJoints_makeChain "+$jntOrient_chk+" "+$stretchPlus_chk) $createChain_btn;
+ 		
+ 		setParent..;
+ 			
+	rowColumnLayout  -numberOfColumns 2 
+				  -columnWidth 1 150 
+				  -columnWidth 2 150
+				  -columnSpacing 1 5;
+ 		
+ 		string $base_btn = `button -l "Select Base" -w 150 -align center`;
+ 		string $tip_btn = `button -l "Select Tip" -w 150 -align center`;
+		string $base_txf = `textField`;
+   	string $tip_txf = `textField`;
+   	button -e -c ("jer_POCJoints_getObj "+$base_txf) $base_btn;
+   	button -e -c ("jer_POCJoints_getObj "+$tip_txf) $tip_btn;
+   	
+   	//setParent..;
+   
+   button -l "connect twist" -w 150 -align center -c "jer_spineGO;deleteUI jer_spineUI" ;
+	
+	showWindow $win;
+
+}
+
+global proc jer_POCJoints_makeChain(string $jntOrient_chk, string $stretchPlus_chk){
+
+	///////////////////
+	// verify selection
+	string $sel[] = `ls -sl`;
+	if (`size($sel)`>2)
+		error ("Please only select one curve to build stretchy joint chain.");
+		
+	//////////////////////////////////////////////
+	// retrieve name for new stretchy joint chain
+	string $chainName = `match "^[a-zA-Z0-9]+" $sel[0]`;
+
+	//////////////////////////
+	//variable declaration
+	int $num = `intSliderGrp -q -v numJointsISG`; // number of joints
+	
+	// curve
+	string $sCurve = $sel[0];
+	string $spineCRV = ($chainName + "_CRV");
+	string $spineShape = ($chainName + "_CRVShape");
+	// clusters (**more than we need)
+	string $cls1 = ($chainName + "_1_CLS");
+	string $cls2 = ($chainName + "_2_CLS");
+	string $cls3 = ($chainName + "_3_CLS");
+	string $cls4 = ($chainName + "_4_CLS");
+	string $cls5 = ($chainName + "_5_CLS");
+	string $cls6 = ($chainName + "_6_CLS");
+
+	//////////////////////////////////////////////////////////////////////////////////////////
+	// duplicate and rebuild new curve for joint chain, retaining old curve's parameterization
+	duplicate -n $spineCRV $sCurve;
+	// ** Skip Rebuild ** // rebuildCurve -kr 0 -ch 0 -s 2 $spineCRV;
+
+	//////////////////////////////////////
+	// cluster the curve & group clusters
+	string $cls[];
+	// create 1st cluster
+	select -r ($spineCRV+".cv[0]");
+	select -add ($spineCRV+".cv[1]");
+	cluster -n $cls1;   $cls[`size $cls`] = $cls1;
+	// create 2nd cluster
+	select -r ($spineCRV+".cv[2]");
+	cluster -n $cls2;   $cls[`size $cls`] = $cls2;
+	
+	// create 3rd cluster
+	select -r ($spineCRV+".cv[3]");
+	select -add ($spineCRV+".cv[4]");
+	cluster -n $cls3;   $cls[`size $cls`] = $cls3;
+	
+	for ($ob in $cls){
+		select -r ($ob+"Handle");
+		group -r -name ($ob +"_GRP");
+	}
+
+	//////////////////////////////////////
+	// create the "POC"s (point on curve)
+
+	for($i=0.0;$i<$num;$i++){
+				
+		// create pointOnCurveInfo node and connect curve
+				
+		string $crvInfo = `createNode -n ($chainName+"_" + ($i+1) + "_POCinfo") pointOnCurveInfo`;
+		connectAttr -f ($spineShape + ".worldSpace[0]") ($crvInfo + ".inputCurve");
+		setAttr ($crvInfo + ".parameter") (1.0 / ($num-1) * $i);
+				
+		string $loc = `group -em -n ($chainName+"_" + ($i+1) + "_POC")`;
+		connectAttr -f ($crvInfo + ".position") ($loc + ".translate");
+				
+		// add uVal slide to control locator position on crv
+		
+		addAttr -ln uVal -at double  -min 0 -max 1 -dv 0 $loc;
+		setAttr -e -keyable true ($loc + ".uVal");
+		
+		setAttr ($loc + ".uVal") (1.0 / ($num-1) * $i);
+		connectAttr -f ($loc + ".uVal") ($crvInfo + ".parameter");
+			
+	}
+
+	jer_ob2Joints ($chainName+"_") "_POC" $jntOrient_chk;
+	jer_POCJoints_upLocs $chainName $stretchPlus_chk;
+
+} // END - proc jer_POCJoints_makeChain
+
+global proc jer_ob2Joints(string $pref,string $suf, string $jntOrient_chk)
+
+{
+
+	string $sels[] = (`ls ($pref+"*"+$suf)`);
+	string $joint;
+	int $standing = `checkBox -q -value $jntOrient_chk`;
+	select -cl;
+	
+	// Create Joints.
+	for ($i=0;$i<size($sels);$i++){
+		$joint= `substitute $suf $sels[$i]  "_JNT"`;
+		joint -n $joint;
+		string $dels[]= `pointConstraint $sels[$i] $joint`;
+		delete $dels;
+	}
+	
+	select -cl;
+	string $sels[] = (`ls ($pref+"*"+"_JNT")`);
+	
+
+	for ($i=0;$i<size($sels);$i++){
+		RS_recreateJoints;
+		select -r $sels[$i];
+		setAttr ($sels[$i]+".ro") 3;
+	}
+	
+	//////////////////////////////////////////////////////////////////////////
+	// Orient joints.  If $jntOrient_chk is checked, character is standing and 
+	// Z will be the temp up vector for aligning joints, otherwise Y is up.
+	// Next, point constraint joints to the POCs and POV locators.
+	string $sels[] = (`ls ($pref+"*"+$suf)`);
+	
+
+	
+	if ($standing==1){
+		for ($i=0;$i<size($sels);$i++){
+			string $joint= `substitute $suf $sels[$i]  "_JNT"`;
+			select -r $joint;
+			joint -e -oj yzx -secondaryAxisOrient zup -zso;
+			$sel = `ls -sl`;
+			setAttr ($sel[0]+".rotateOrder") 4;
+			select -cl;
+			pointConstraint $sels[$i] $joint;	
+		}
+	} else {
+		for ($i=0;$i<size($sels);$i++){
+			string $joint= `substitute $suf $sels[$i]  "_JNT"`;
+			select -r $joint;
+			joint -e -oj yzx -secondaryAxisOrient ydown -zso;
+			$sel = `ls -sl`;
+			setAttr ($sel[0]+".rotateOrder") 4;
+			select -cl;
+			pointConstraint $sels[$i] $joint;	
+		}
+	}// END if ($standing==1){
+
+}
+
+global proc jer_POCJoints_upLocs(string $chainName, string $stretchPlus_chk){
+	string $loc[];
+	int $num = 0;
+	string $nextJnt;
+	string $jnt;
+	string $nextPOC;
+	string $locGrp[];
+	string $locGrpShape[];
+	
+	float $jointCount;
+	string $jointDivMD;
+	string $twistMD;
+	
+	int $stretchPlus = `checkBox -q -value $stretchPlus_chk`;
+	
+	// List joints
+	string $jointChain[] = (`ls ($chainName+"*"+"POC")`);
+	
+	// Offset of locator from the aimed joint.
+	float $locOffset = `RS_jLength ($chainName+"_1_JNT")`; 
+	
+	///////////////////////////////////////////////////////////////////////////
+	// Create and configure multiply divide nodes to feed twist into
+	
+	// Twist value divided by the number of joints
+	$twistMD = `createNode -n ($chainName+"_jointDivMD") multiplyDivide`;
+	$jointCount = `size($jointChain)`;
+	$jointCount = (1 / ($jointCount-1));
+	setAttr ($twistMD+".input2X") $jointCount;	
+	
+	
+	///////////////////////////////////////////////////////////////////////////
+	// Create, position and contrain aim locators for each joint in chain	
+	
+	for ($num=1;$num<(`size($jointChain)`);$num++){
+		
+		// Create and offset locators.  i.e. Spine_1 will have a locator parented under it.
+		// This locator will be offset from Spine_2 w/ $locOffset
+		$jnt = ($chainName+"_"+$num+"_JNT");
+		$nextJnt = ($chainName+"_"+($num+1)+"_JNT");
+		$nextPOC = ($chainName+"_"+($num+2)+"_POC");
+		
+
+				$jnt = ($chainName+"_"+$num+"_JNT");
+		
+		if (`objExists $nextPOC`){
+			$loc = `spaceLocator -n ($chainName+"_"+$num+"_UPV")`;
+			parent $loc[0] $nextJnt;
+			
+			// group up vector locators
+			$locGrp = `duplicate -n ($chainName+"_"+($num)+"_LocGRP") $loc[0]`;
+			$locGrpShape = `listRelatives -s $locGrp[0]`;
+			delete $locGrpShape[0];
+			makeIdentity $locGrp[0];
+			
+			// move new up vector locators n units in -Z
+			xform -os -t 0 0 ($locOffset*(-1)) -ro 0 0 0 $loc[0];
+			parent $locGrp[0] $jnt;
+			
+			// ** does this help?
+			makeIdentity -r 1 $locGrp[0];
+			
+			// aim constrain joints to up vectors
+			parent $loc[0] $locGrp[0];
+			aimConstraint -aimVector 0 1 0 -upVector 0 0 -1 -worldUpType "object" -worldUpObject $loc $nextPOC $nextJnt;
+			
+			// attach twist to up vector groups
+			connectAttr -f ($chainName+"_jointDivMD.outputX") ($locGrp[0]+".rotateY");
+			print ("Loc Grp =");
+			print $locGrp;
+			print "\n";
+			
+			// Add "Stretch Plus" to joints if box is checked.  Constrain up vector group to aimed joint
+			if ($stretchPlus ==1){
+				pointConstraint $nextJnt $locGrp[0];
+			}
+		}
+	}
+	
+	///////////////////////////////////////////////////////////////////////////
+	// Create aim locator for root
+	$loc = `spaceLocator -n ($chainName+"_Root_UPV")`;
+	parent $loc[0] ($chainName+"_1_JNT");
+	xform -os -t 0 0 ($locOffset*(-1)) -ro 0 0 0 $loc[0];
+	parent -w $loc[0];
+	aimConstraint -aimVector 0 1 0 -upVector 0 0 -1 -worldUpType "object" -worldUpObject $loc ($chainName+"_2_POC") ($chainName+"_1_JNT");
+	
+} // END  -  global proc jer_POCJoints_upLocs

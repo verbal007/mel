@@ -1,0 +1,157 @@
+////////////////////////////////////////////////////////////////////////
+/*
+jer_rotBlendAim
+v 1.1
+
+Created by Jeremy Sabo on Oct 21, 2006
+
+Desc:	Select 1 controlled object, select 2 controller objects
+		and select 1 object to attach blender to.  Creates rotation blender
+		using aim & up vector locators.  Master1 will be default for
+		the blend switch.
+		
+Usage:	jer_rotBlendAim BlenderCtrl BlenderAttr SlaveObject Master1Obj Master2Obj
+	i.e.  jer_rotBlendAim Chest_c Blend BND_Arm_ IK_Arm FK_Arm;
+	This would setup the FK arm as the default "0".  ** I should change this.
+
+Updates: 1.1 - 08/10/14 - Rotation orders of the source can differ from the masters.
+		Offset blender nulls futher from joints to smooth blending.
+		1.3 - Dec 4, 2013 - Rotation orders of the source can differ from the masters.
+		Offset blender nulls futher from joints to smooth blending.
+
+*/ 
+////////////////////////////////////////////////////////////////////////
+
+global proc string[] jer_rotBlendAim(string $blendCtrl, string $blendAttr,
+									string $slave, string $master1, string $master2){
+
+	int $rotateOrder = `getAttr ($slave+".rotateOrder")`;
+
+	string $aimNulSlave = `jer_nameUnique ($slave+"_aimRotBlend_NUL")`;
+	string $upNulSlave = `jer_nameUnique ($slave+"_upRotBlend_NUL")`;
+
+	string $aimNulMast1 = `jer_nameUnique ($master1+"_aimRotBlend_NUL")`;
+	string $upNulMast1 = `jer_nameUnique ($master1+"_upRotBlend_NUL")`;
+	
+	string $aimNulMast2 = `jer_nameUnique ($master2+"_aimRotBlend_NUL")`;
+	string $upNulMast2 = `jer_nameUnique ($master2+"_upRotBlendUp_NUL")`;
+
+	string $tmpParConst[];
+
+	string $aimPntConst[] = {($slave+"_aimRotBlend_PntConst")};
+	string $upPntConst[] = {($slave+"_upRotBlend_PntConst")};
+	string $aimConst = ($slave+"_rotBlend_AimConst");
+	string $reverse = ($slave+"_rotBlend_REV");
+
+	float $aimVector[];
+	float $upVector[];
+	
+	string $nodesCreated[];
+	
+	float $offset = 20;  // ** dynamically determine offset relative to some joint length
+
+	// Aim Vector: Calculate
+	switch ($rotateOrder) {
+		// xyz  (To lock Z, aim X & set Y as up vector.
+	   case 0:
+			$aimVector = {1,0,0};
+			$upVector = {0,1,0};
+	      break;
+	   // yzx
+	   case 1:
+	   	$aimVector = {0,1,0};
+			$upVector = {0,0,1};
+	      break;
+	   // zxy
+	   case 2:
+	   	$aimVector = {0,0,1};
+			$upVector = {1,0,0};
+	      break;
+	   // xzy
+	   case 3:
+	   	$aimVector = {1,0,0};
+			$upVector = {0,0,1};
+	      break;
+	   // yxz
+	   case 4:
+	   	$aimVector = {0,1,0};
+			$upVector = {1,0,0};
+	      break;
+	   // zyx
+	   case 5:
+	   	$aimVector = {0,0,1};
+			$upVector = {0,1,0};
+	      break;	      
+	}
+
+	
+	// Slave Nulls
+		group -em -n $aimNulSlave;
+		group -em -n $upNulSlave;
+
+	// Master 1 Nulls
+		group -em -n $aimNulMast1;
+		group -em -n $upNulMast1;
+
+	jer_posMatch 2 $master1 $aimNulMast1;
+	jer_posMatch 2 $master1 $upNulMast1;
+
+	// OLD replaced in update 1.3 // xform -objectSpace -relative -t ($aimVector[0]*$offset) ($aimVector[1]*$offset) ($aimVector[2]*$offset) $aimNulMast1;
+	// OLD replaced in update 1.3 // xform -objectSpace -relative -t ($upVector[0]*$offset) ($upVector[1]*$offset) ($upVector[2]*$offset) $upNulMast1;
+	parent $aimNulMast1 $master1;
+	parent $upNulMast1 $master1;
+	setAttr ($upNulMast1+".tx") ($upVector[0]*$offset);
+	setAttr ($upNulMast1+".ty") ($upVector[1]*$offset);
+	setAttr ($upNulMast1+".tz") ($upVector[2]*$offset);
+	
+	setAttr ($aimNulMast1+".tx") ($aimVector[0]*$offset);
+	setAttr ($aimNulMast1+".ty") ($aimVector[1]*$offset);
+	setAttr ($aimNulMast1+".tz") ($aimVector[2]*$offset);
+
+	// Master 2 Nulls
+		group -em -n $aimNulMast2;
+		group -em -n $upNulMast2;
+
+	jer_posMatch 2 $master2 $aimNulMast2;
+	jer_posMatch 2 $master2 $upNulMast2;
+
+	// OLD // xform -objectSpace -relative -t ($aimVector[0]*$offset) ($aimVector[1]*$offset) ($aimVector[2]*$offset) $aimNulMast2;
+	// OLD // xform -objectSpace -relative -t ($upVector[0]*$offset) ($upVector[1]*$offset) ($upVector[2]*$offset) $upNulMast2;
+	parent $aimNulMast2 $master2;
+	parent $upNulMast2 $master2;
+	setAttr ($upNulMast2+".tx") ($upVector[0]*$offset);
+	setAttr ($upNulMast2+".ty") ($upVector[1]*$offset);
+	setAttr ($upNulMast2+".tz") ($upVector[2]*$offset);
+	
+	setAttr ($aimNulMast2+".tx") ($aimVector[0]*$offset);
+	setAttr ($aimNulMast2+".ty") ($aimVector[1]*$offset);
+	setAttr ($aimNulMast2+".tz") ($aimVector[2]*$offset);
+
+	// Point & Aim Constraints
+	$aimPntConst = `pointConstraint -n $aimPntConst[0] -offset 0 0 0 -weight 1 $aimNulMast1 $aimNulMast2 $aimNulSlave`;
+	$upPntConst = `pointConstraint -n $upPntConst[0] -offset 0 0 0 -weight 1 $upNulMast1 $upNulMast2 $upNulSlave`;
+
+	aimConstraint -offset 0 0 0 -weight 1 -n $aimConst
+		-aimVector $aimVector[0] $aimVector[1] $aimVector[2]
+		-upVector $upVector[0] $upVector[1] $upVector[2]
+		-worldUpType "object" -worldUpObject $upNulSlave $aimNulSlave $slave;
+
+	// Blender Attribute
+	if (!objExists ($blendCtrl+"."+$blendAttr)){
+		addAttr -ln $blendAttr -at double  -min 0 -max 1 -dv 0 $blendCtrl;
+	}
+	setAttr -e -keyable true ($blendCtrl+"."+$blendAttr);
+	
+	$reverse = `createNode reverse -n $reverse`;
+	
+	connectAttr -f ($blendCtrl+"."+$blendAttr) ($reverse+".inputX");
+	connectAttr -f ($blendCtrl+"."+$blendAttr) ($aimPntConst[0]+"."+$aimNulMast1+"W0");
+	connectAttr -f ($reverse+".outputX") ($aimPntConst[0]+"."+$aimNulMast2+"W1");
+	connectAttr -f ($blendCtrl+"."+$blendAttr) ($upPntConst[0]+"."+$upNulMast1+"W0");
+	connectAttr -f ($reverse+".outputX") ($upPntConst[0]+"."+$upNulMast2+"W1");
+	
+	$createdNodes = {$aimNulSlave,$upNulSlave,$aimNulMast1,$upNulMast1,$aimNulMast2};
+	
+	return $createdNodes;
+	
+};

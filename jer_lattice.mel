@@ -1,0 +1,18 @@
+//////////////////////////////////////////////////////////////////////////////
+/* jer_lattice
+Created on Dec 31, 2005 by Jeremy Sabo
+
+Desc: Creates a lattice w/ the name of lattice
+based on object that is being deformed.
+
+*/
+//////////////////////////////////////////////////////////////////////////////
+
+global proc jer_lattice(){
+	string $sel[] = `ls -sl -fl`;
+	string $object = `match "^[^\.]*" $sel[0]`;  // match everything BUT the "."
+	string $lattice = `substitute "Shape$" $object ""`;
+	$lattice = `substitute "[_A-Z]*$" $lattice "_ffd"`;
+	
+	lattice -divisions 3 3 3 -objectCentered true  -ldv 2 2 2 -name $lattice;
+}

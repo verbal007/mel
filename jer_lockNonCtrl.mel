@@ -1,0 +1,57 @@
+/*
+//////////////////////////////////////////////////////////////////////////////
+ jer_lockNonCtrl
+ Created by: Jeremy Sabo on May 23, 2007
+
+ Desc: locks & hides all attributes on non-ctrl objects
+
+//////////////////////////////////////////////////////////////////////////////
+*/
+global proc jer_lockNonCtrl(){
+
+string $transforms[] = `ls -type "transform"`;
+string $match;
+string $each;
+string $transform;
+
+for ($each in $transforms){
+	if (`objectType $each` == "transform" 
+		&& `gmatch $each "*_*"`
+		&& !`gmatch $each "*_hlpr"`){
+	// listing type "transforms" returns joints, but joint returns type "joint"
+		$match = `match "_c$" $each`;
+		if (`size ($match)` < 1) {
+			print ($each+"  LOCKED\n");
+			setAttr -lock true -keyable false ($each+".tx");
+			setAttr -lock true -keyable false ($each+".tx");
+			setAttr -lock true -keyable false ($each+".ty");
+			setAttr -lock true -keyable false ($each+".ty");
+			setAttr -lock true -keyable false ($each+".tz");
+			setAttr -lock true -keyable false ($each+".tz");
+			setAttr -lock true -keyable false ($each+".rx");
+			setAttr -lock true -keyable false ($each+".rx");
+			setAttr -lock true -keyable false ($each+".ry");
+			setAttr -lock true -keyable false ($each+".ry");
+			setAttr -lock true -keyable false ($each+".rz");
+			setAttr -lock true -keyable false ($each+".rz");
+			setAttr -lock true -keyable false ($each+".sx");
+			setAttr -lock true -keyable false ($each+".sx");
+			setAttr -lock true -keyable false ($each+".sy");
+			setAttr -lock true -keyable false ($each+".sy");
+			setAttr -lock true -keyable false ($each+".sz");
+			setAttr -lock true -keyable false ($each+".sz");
+			setAttr -lock true -keyable false ($each+".v");
+			setAttr -lock true -keyable false ($each+".v");
+		}
+
+	}
+
+}
+
+} // END // global proc
+
+/* BONUS //
+// Testing
+source "jer_lockNonCtrl.mel";
+jer_lockNonCtrl;
+*/

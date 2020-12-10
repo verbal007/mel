@@ -1,0 +1,49 @@
+///////////////////////////////////
+// jer_daJointz
+// Created by: Jeremy Sabo on Apr 21, 2005
+// Usage: 		Select bound mesh and run script.
+// 				Copy / paste the line created in the script editor window.
+// Inspiration:Orcs of Warhammer 40k
+
+global proc jer_daJointz(){
+
+	
+	string $sel[] = `ls -sl`;
+	
+	int $selTyp = `gmatch $sel[0] "*.*"`;
+	
+	string $jnt;
+	
+	switch ($selTyp) {
+    case 1: // vert selected
+    
+    	string $shape[] = `listRelatives -p`;
+		string $transform[] = `listRelatives -p $shape[0]`;
+		string $skinCluster = `findRelatedSkinCluster $transform[0]`;
+		string $jntAry[] = `skinPercent -ib 0.0000001 -q -t $skinCluster $sel`;
+		string $shape[] = `listRelatives -p`;
+		string $transform[] = `listRelatives -p $shape[0]`;
+		break;
+   
+    case 0: // mesh selected
+		string $jntAry[] = `skinCluster -q -wi $sel[0]`;
+		break;
+	}
+
+	print $jntAry;
+	
+	string $fileName = (`internalVar -userTmpDir` + "jer_daJntz.txt");
+	int $fileID = `fopen $fileName "w"`;
+	
+	for ($jnt in $jntAry){
+		fprint $fileID ($jnt + "\n");
+	};
+	fclose $fileID;
+	
+	string $jntStr = stringArrayToString($jntAry, "\",\"");
+	string $command = ("string $daJntz[] = \{\""+$jntStr+"\"\}\;");
+	print "\n*******************************************************\n";
+	print "Copy & paste this command in your clipboard for later. \n*******************************************************\n";
+	print $command;
+};
+

@@ -1,0 +1,26 @@
+///////////////////////////////////////////////////////////////////////////
+/* jer_edgeLoopSel.mel
+
+Created by Jeremy Sabo on May 15, 2007
+
+Desc:	Selects edge loop based on selected edge
+
+*/
+///////////////////////////////////////////////////////////////////////////
+
+
+global proc jer_edgeLoopSel(){
+
+string $edges[] = `ls -sl -fl`;
+
+string $edgeString;
+int $edgeNum;
+string $each;
+
+for ($each in $edges){
+	$edgeString = `match "[^\[]*$" $each`;
+	$edgeNum = `substitute "]" $edgeString ""`;
+	polySelect -add -edgeLoop $edgeNum;
+}
+
+} // END // global proc jer_edgeLoopSel
